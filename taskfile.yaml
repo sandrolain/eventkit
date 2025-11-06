@@ -7,9 +7,6 @@ vars:
   # Package list for analysis scoped to project sources
   GO_PKGS:
     sh: go list ./...
-  BINARY_NAME: goncurrently
-  EXAMPLES_DIR: examples
-  TAPES_DIR: tapes
 
 tasks:
   install-tools-mac:
@@ -19,25 +16,20 @@ tasks:
       - brew install aquasecurity/trivy/trivy
       - brew install govulncheck
       - go install github.com/google/go-licenses/v2@latest
-      - brew install vhs
 
   build:
-    desc: Build the goncurrently binary
+    desc: Build all CLI tools
     cmds:
-      - go build -o {{.BINARY_NAME}} .
-    sources:
-      - "*.go"
-    generates:
-      - "{{.BINARY_NAME}}"
-
-  build-linux:
-    desc: Build the goncurrently binary for Linux (for Docker/VHS)
-    cmds:
-      - GOOS=linux GOARCH=amd64 go build -o {{.BINARY_NAME}}-linux .
-    sources:
-      - "*.go"
-    generates:
-      - "{{.BINARY_NAME}}-linux"
+      - go build ./coaptool
+      - go build ./httptool
+      - go build ./mqtttool
+      - go build ./natstool
+      - go build ./kafkatool
+      - go build ./redistool
+      - go build ./pubsubtool
+      - go build ./pgsqltool
+      - go build ./gittool
+      - go build ./mongodbtool
 
   fmt-check:
     desc: Check Go code formatting without making changes
@@ -70,12 +62,13 @@ tasks:
       - govulncheck ./...
 
   test:
-    desc: Run tests with race detector and coverage (suppress linker warnings)
+    desc: Run tests with coverage
     cmds:
-      - echo "Running tests with coverage (clean output)..."
-      - go test -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v '/examples/') 2>&1
+      - echo "Running tests with coverage..."
+      - go test -coverprofile=coverage.out -covermode=atomic ./pkg/...
       - go tool cover -html=coverage.out -o coverage.html
       - echo "Coverage report generated at coverage.html"
+      - go tool cover -func=coverage.out
 
   gosec:
     desc: Run security checks with gosec
@@ -127,106 +120,9 @@ tasks:
     desc: Clean build and analysis artifacts
     cmds:
       - go clean -cache -testcache -modcache
-      - rm -rf bin/
-      - rm -rf dist/
+      - rm -f coaptool httptool mqtttool natstool kafkatool redistool pubsubtool pgsqltool gittool mongodbtool
       - rm -f coverage.out
       - rm -f coverage.html
       - rm -f security-report.json
       - rm -f trivy-results.json
       - rm -f licenses.csv
-
-  # VHS tasks
-  vhs-check-docker:
-    desc: Check if Docker is available
-    cmds:
-      - |
-        if ! command -v docker &> /dev/null; then
-          echo "Docker is not available. Install it from:"
-          echo "  https://docs.docker.com/get-docker/"
-          exit 1
-        fi
-        echo "Docker is available ✓"
-    silent: false
-
-  vhs-microservices:
-    desc: Generate GIF for microservices example (uses Docker)
-    deps: [build-linux, vhs-check-docker]
-    cmds:
-      - echo "Generating microservices demo GIF with Docker..."
-      - docker run --rm -v $(pwd):/vhs ghcr.io/charmbracelet/vhs {{.TAPES_DIR}}/microservices.tape
-      - echo "✓ Generated {{.TAPES_DIR}}/microservices.gif"
-
-  vhs-tui:
-    desc: Generate GIF for TUI example (uses Docker)
-    deps: [build-linux, vhs-check-docker]
-    cmds:
-      - echo "Generating TUI demo GIF with Docker..."
-      - docker run --rm -v $(pwd):/vhs ghcr.io/charmbracelet/vhs {{.TAPES_DIR}}/tui-example.tape
-      - echo "✓ Generated {{.TAPES_DIR}}/tui-example.gif"
-
-  vhs-basic:
-    desc: Generate GIF for basic example (uses Docker)
-    deps: [build-linux, vhs-check-docker]
-    cmds:
-      - echo "Generating basic demo GIF with Docker..."
-      - docker run --rm -v $(pwd):/vhs ghcr.io/charmbracelet/vhs {{.TAPES_DIR}}/basic.tape
-      - echo "✓ Generated {{.TAPES_DIR}}/basic.gif"
-
-  vhs-dev-servers:
-    desc: Generate GIF for dev servers example (uses Docker)
-    deps: [build-linux, vhs-check-docker]
-    cmds:
-      - echo "Generating dev servers demo GIF with Docker..."
-      - docker run --rm -v $(pwd):/vhs ghcr.io/charmbracelet/vhs {{.TAPES_DIR}}/dev-servers.tape
-      - echo "✓ Generated {{.TAPES_DIR}}/dev-servers.gif"
-
-  vhs-all:
-    desc: Generate all demo GIFs (uses Docker)
-    deps: [build-linux, vhs-check-docker]
-    cmds:
-      - task: vhs-basic
-      - task: vhs-dev-servers
-      - task: vhs-microservices
-      - task: vhs-tui
-      - echo "✓ All demo GIFs generated in {{.EXAMPLES_DIR}}/"
-
-  # Example running tasks
-  run-basic:
-    desc: Run the basic example
-    deps: [build]
-    cmds:
-      - cat {{.EXAMPLES_DIR}}/basic.yaml | ./{{.BINARY_NAME}}
-
-  run-dev-servers:
-    desc: Run the development servers example
-    deps: [build]
-    cmds:
-      - cat {{.EXAMPLES_DIR}}/dev-servers.yaml | ./{{.BINARY_NAME}}
-
-  run-microservices:
-    desc: Run the microservices example
-    deps: [build]
-    cmds:
-      - cat {{.EXAMPLES_DIR}}/microservices.yaml | ./{{.BINARY_NAME}}
-
-  run-tui:
-    desc: Run the TUI example
-    deps: [build]
-    cmds:
-      - cat {{.EXAMPLES_DIR}}/tui-example.yaml | ./{{.BINARY_NAME}}
-
-  run-interactive:
-    desc: Run the interactive example selector
-    deps: [build]
-    cmds:
-      - ./{{.EXAMPLES_DIR}}/run-interactive.sh
-
-  install:
-    desc: Install goncurrently to $GOPATH/bin
-    cmds:
-      - go install .
-
-  uninstall:
-    desc: Uninstall goncurrently from $GOPATH/bin
-    cmds:
-      - rm -f $(go env GOPATH)/bin/{{.BINARY_NAME}}

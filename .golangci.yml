@@ -40,3 +40,10 @@ linters:
         linters:
           - errcheck
           - forbidigo
+      - path: "(.+)tool/.+\\.go"
+        linters:
+          - forbidigo
+          - gocognit
+      - path: "pkg/toolutil/.+\\.go"
+        linters:
+          - forbidigo
