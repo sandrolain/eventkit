@@ -1,0 +1,68 @@
+package main
+
+import (
+	"database/sql"
+	"fmt"
+	"log/slog"
+
+	_ "github.com/lib/pq"
+	"github.com/sandrolain/eventkit/pkg/common"
+	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
+	"github.com/spf13/cobra"
+)
+
+func sendCommand() *cobra.Command {
+	var (
+		connStr  string
+		channel  string
+		interval string
+		payload  string
+		mime     string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "send",
+		Short: "Periodically send NOTIFY to PostgreSQL channel",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := common.SetupGracefulShutdown()
+			defer cancel()
+
+			db, err := sql.Open("postgres", connStr)
+			if err != nil {
+				return fmt.Errorf("DB open error: %w", err)
+			}
+			defer func() {
+				if err := db.Close(); err != nil {
+					slog.Error("Failed to close DB connection", "error", err)
+				}
+			}()
+
+			logger := toolutil.Logger()
+			logger.Info("Sending NOTIFY to PostgreSQL", "channel", channel, "interval", interval)
+
+			return common.StartPeriodicTask(ctx, interval, func() error {
+				b, _, err := toolutil.BuildPayload(payload, mime)
+				if err != nil {
+					logger.Error("Failed to build payload", "error", err)
+					return err
+				}
+
+				notifySQL := fmt.Sprintf("NOTIFY %s, $1", channel)
+				if _, err := db.Exec(notifySQL, string(b)); err != nil {
+					logger.Error("NOTIFY error", "error", err)
+					return err
+				}
+
+				logger.Info("NOTIFY sent", "channel", channel, "bytes", len(b))
+				return nil
+			})
+		},
+	}
+
+	cmd.Flags().StringVar(&connStr, "conn", "postgres://user:pass@localhost:5432/postgres?sslmode=disable", "PostgreSQL connection string")
+	cmd.Flags().StringVar(&channel, "channel", "test_channel", "NOTIFY channel name")
+	toolutil.AddPayloadFlags(cmd, &payload, "{nowtime}", &mime, toolutil.CTText)
+	toolutil.AddIntervalFlag(cmd, &interval, "5s")
+
+	return cmd
+}

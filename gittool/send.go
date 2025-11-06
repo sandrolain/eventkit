@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -16,14 +17,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func main() {
-	root := &cobra.Command{
-		Use:   "gitcli",
-		Short: "Git source tester",
-		Long:  "A simple Git CLI with only a send command that commits and pushes periodically.",
-	}
-
-	// flags
+func sendCommand() *cobra.Command {
 	var (
 		remote        string
 		branch        string
@@ -36,7 +30,7 @@ func main() {
 		password      string
 	)
 
-	sendCmd := &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "send",
 		Short: "Periodically commit and push to a git repo",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,32 +44,29 @@ func main() {
 		},
 	}
 
-	sendCmd.Flags().StringVar(&remote, "remote", "", "Remote git repository URL (required)")
-	sendCmd.Flags().StringVar(&branch, "branch", "main", "Branch to commit to")
-	sendCmd.Flags().StringVar(&interval, "interval", "10s", "Interval between commits (e.g. 10s, 1m)")
-	sendCmd.Flags().StringVar(&filename, "filename", "data.txt", "File to update in the repo")
-	toolutil.AddPayloadFlags(sendCmd, &payload, "Automated update at {nowtime}", &mime, toolutil.CTText)
-	sendCmd.Flags().StringVar(&commitMessage, "message", "Automated commit", "Commit message")
-	sendCmd.Flags().StringVar(&username, "username", "", "Username for remote repository (optional)")
-	sendCmd.Flags().StringVar(&password, "password", "", "Password or token for remote repository (optional)")
+	cmd.Flags().StringVar(&remote, "remote", "", "Remote git repository URL (required)")
+	cmd.Flags().StringVar(&branch, "branch", "main", "Branch to commit to")
+	cmd.Flags().StringVar(&interval, "interval", "10s", "Interval between commits (e.g. 10s, 1m)")
+	cmd.Flags().StringVar(&filename, "filename", "data.txt", "File to update in the repo")
+	toolutil.AddPayloadFlags(cmd, &payload, "Automated update at {nowtime}", &mime, toolutil.CTText)
+	cmd.Flags().StringVar(&commitMessage, "message", "Automated commit", "Commit message")
+	cmd.Flags().StringVar(&username, "username", "", "Username for remote repository (optional)")
+	cmd.Flags().StringVar(&password, "password", "", "Password or token for remote repository (optional)")
 
-	root.AddCommand(sendCmd)
-	if err := root.Execute(); err != nil {
-		os.Exit(1)
-	}
+	return cmd
 }
 
 func runGitSend(remote, branch, interval, filename, payload, mime, message, username, password string) error {
 	ctx, cancel := common.SetupGracefulShutdown()
 	defer cancel()
-	// working dir
+
 	tmpDir, err := os.MkdirTemp("", "gittool-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
 	defer func() {
 		if err := os.RemoveAll(tmpDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to remove temp dir: %v\n", err)
+			slog.Error("Failed to remove temp dir", "error", err)
 		}
 	}()
 
@@ -84,20 +75,23 @@ func runGitSend(remote, branch, interval, filename, payload, mime, message, user
 		return err
 	}
 
-	fmt.Printf("Ready. Remote: %s, branch: %s, file: %s. Interval: %s\n", remote, branch, filename, interval)
+	logger := toolutil.Logger()
+	logger.Info("Git tool ready", "remote", remote, "branch", branch, "file", filename, "interval", interval)
 
 	return common.StartPeriodicTask(ctx, interval, func() error {
 		if err := doCommit(repo, tmpDir, branch, filename, payload, mime, message, username, password, remote); err != nil {
-			fmt.Fprintf(os.Stderr, "Commit error: %v\n", err)
+			logger.Error("Commit error", "error", err)
 			return err
 		}
-		fmt.Printf("Committed to %s/%s at %s\n", remote, branch, time.Now().Format(time.RFC3339))
+		logger.Info("Committed and pushed", "remote", remote, "branch", branch)
 		return nil
 	})
 }
 
 func cloneOrInitRepo(tmpDir, remote, branch, username, password string) (*git.Repository, error) {
-	fmt.Printf("Cloning %s (branch: %s) into %s...\n", remote, branch, tmpDir)
+	logger := toolutil.Logger()
+	logger.Info("Cloning repository", "remote", remote, "branch", branch, "dir", tmpDir)
+
 	cloneOpts := &git.CloneOptions{
 		URL:           remote,
 		Progress:      os.Stdout,
@@ -107,12 +101,14 @@ func cloneOrInitRepo(tmpDir, remote, branch, username, password string) (*git.Re
 	if username != "" && password != "" {
 		cloneOpts.Auth = &http.BasicAuth{Username: username, Password: password}
 	}
+
 	repo, err := git.PlainClone(tmpDir, false, cloneOpts)
 	if err == nil {
 		return repo, nil
 	}
-	if err == git.ErrRepositoryNotExists || (err.Error() == "remote repository is empty" || err.Error() == "repository is empty") {
-		fmt.Println("Remote repository is empty, initializing new repository...")
+
+	if err == git.ErrRepositoryNotExists || err.Error() == "remote repository is empty" || err.Error() == "repository is empty" {
+		logger.Info("Remote repository is empty, initializing new repository")
 		repo, initErr := git.PlainInit(tmpDir, false)
 		if initErr != nil {
 			return nil, fmt.Errorf("init repo: %w", initErr)
@@ -126,8 +122,9 @@ func cloneOrInitRepo(tmpDir, remote, branch, username, password string) (*git.Re
 		}
 		return repo, nil
 	}
+
 	if err.Error() == "couldn't find remote ref \"refs/heads/"+branch+"\"" {
-		fmt.Printf("Remote branch '%s' not found, cloning default branch and creating it locally...\n", branch)
+		logger.Info("Remote branch not found, cloning default branch and creating it locally", "branch", branch)
 		cloneOpts2 := &git.CloneOptions{URL: remote, Progress: os.Stdout}
 		if username != "" && password != "" {
 			cloneOpts2.Auth = &http.BasicAuth{Username: username, Password: password}
@@ -141,6 +138,7 @@ func cloneOrInitRepo(tmpDir, remote, branch, username, password string) (*git.Re
 		}
 		return repo, nil
 	}
+
 	return nil, fmt.Errorf("git clone error: %w", err)
 }
 
@@ -160,7 +158,6 @@ func checkoutOrCreateBranch(repo *git.Repository, branch string) error {
 func doCommit(repo *git.Repository, repoPath, branch, filename, payload, mime, message, username, password, remote string) error {
 	filePath := filepath.Join(repoPath, filename)
 
-	// Build payload with interpolation support
 	content, _, err := toolutil.BuildPayload(payload, mime)
 	if err != nil {
 		return fmt.Errorf("build payload: %w", err)
@@ -172,9 +169,10 @@ func doCommit(repo *git.Repository, repoPath, branch, filename, payload, mime, m
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to close file: %v\n", err)
+			slog.Error("Failed to close file", "error", err)
 		}
 	}()
+
 	if _, err := f.Write(content); err != nil {
 		return fmt.Errorf("write file: %w", err)
 	}
@@ -186,19 +184,30 @@ func doCommit(repo *git.Repository, repoPath, branch, filename, payload, mime, m
 	if err != nil {
 		return fmt.Errorf("get worktree: %w", err)
 	}
+
 	if _, err := wt.Add(filename); err != nil {
 		return fmt.Errorf("git add: %w", err)
 	}
-	_, err = wt.Commit(message, &git.CommitOptions{Author: &object.Signature{Name: "gittool-bot", Email: "gittool@example.com", When: time.Now()}})
+
+	_, err = wt.Commit(message, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "gittool-bot",
+			Email: "gittool@example.com",
+			When:  time.Now(),
+		},
+	})
 	if err != nil && err.Error() != "nothing to commit, working tree clean" {
 		return fmt.Errorf("git commit: %w", err)
 	}
+
 	pushOpts := &git.PushOptions{RemoteName: "origin"}
 	if username != "" && password != "" {
 		pushOpts.Auth = &http.BasicAuth{Username: username, Password: password}
 	}
+
 	if err := repo.Push(pushOpts); err != nil && err != git.NoErrAlreadyUpToDate {
 		return fmt.Errorf("git push: %w", err)
 	}
+
 	return nil
 }

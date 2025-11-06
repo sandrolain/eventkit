@@ -22,6 +22,45 @@ const (
 	CTText = "text/plain"
 )
 
+var (
+	// Color definitions for CLI output
+	colorCyan    = color.New(color.FgCyan).SprintFunc()
+	colorGreen   = color.New(color.FgGreen).SprintFunc()
+	colorYellow  = color.New(color.FgYellow).SprintFunc()
+	colorMagenta = color.New(color.FgMagenta).SprintFunc()
+	colorBold    = color.New(color.Bold).SprintFunc()
+)
+
+// PrintInfo prints an informational message with color.
+func PrintInfo(format string, args ...interface{}) {
+	fmt.Printf("%s %s\n", colorCyan("ℹ"), fmt.Sprintf(format, args...))
+}
+
+// PrintSuccess prints a success message with color.
+func PrintSuccess(format string, args ...interface{}) {
+	fmt.Printf("%s %s\n", colorGreen("✓"), fmt.Sprintf(format, args...))
+}
+
+// PrintWarning prints a warning message with color.
+func PrintWarning(format string, args ...interface{}) {
+	fmt.Printf("%s %s\n", colorYellow("⚠"), fmt.Sprintf(format, args...))
+}
+
+// PrintError prints an error message with color to stderr.
+func PrintError(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, "%s %s\n", color.RedString("✗"), fmt.Sprintf(format, args...))
+}
+
+// PrintHeader prints a bold header message.
+func PrintHeader(format string, args ...interface{}) {
+	fmt.Printf("\n%s\n", colorBold(fmt.Sprintf(format, args...)))
+}
+
+// PrintKeyValue prints a key-value pair with color.
+func PrintKeyValue(key string, value interface{}) {
+	fmt.Printf("  %s: %v\n", colorMagenta(key), value)
+}
+
 // Logger returns a slog logger to stdout.
 func Logger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
