@@ -28,6 +28,7 @@ func main() {
 		sendBrokers  string
 		sendTopic    string
 		sendPayload  string
+		sendMIME     string
 		sendInterval string
 	)
 	sendCmd := &cobra.Command{
@@ -50,7 +51,7 @@ func main() {
 			fmt.Printf("Producing to Kafka %s, topic: %s\n", sendBrokers, sendTopic)
 
 			for range ticker.C {
-				body, _, err := toolutil.BuildPayload(sendPayload, toolutil.CTText)
+				body, _, err := toolutil.BuildPayload(sendPayload, sendMIME)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					continue
@@ -69,7 +70,7 @@ func main() {
 	}
 	sendCmd.Flags().StringVar(&sendBrokers, "brokers", "localhost:9092", "Kafka brokers (comma-separated)")
 	sendCmd.Flags().StringVar(&sendTopic, "topic", "test", "Kafka topic")
-	toolutil.AddPayloadFlags(sendCmd, &sendPayload, "Hello, Kafka!", new(string), "")
+	toolutil.AddPayloadFlags(sendCmd, &sendPayload, "Hello, Kafka!", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(sendCmd, &sendInterval, "5s")
 
 	// SERVE command

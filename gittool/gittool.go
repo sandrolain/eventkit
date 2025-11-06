@@ -12,6 +12,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/sandrolain/eventkit/pkg/common"
+	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 )
 
@@ -28,6 +29,8 @@ func main() {
 		branch        string
 		interval      string
 		filename      string
+		payload       string
+		mime          string
 		commitMessage string
 		username      string
 		password      string
@@ -43,7 +46,7 @@ func main() {
 			if _, err := time.ParseDuration(interval); err != nil {
 				return fmt.Errorf("invalid interval: %w", err)
 			}
-			return runGitSend(remote, branch, interval, filename, commitMessage, username, password)
+			return runGitSend(remote, branch, interval, filename, payload, mime, commitMessage, username, password)
 		},
 	}
 
@@ -51,6 +54,7 @@ func main() {
 	sendCmd.Flags().StringVar(&branch, "branch", "main", "Branch to commit to")
 	sendCmd.Flags().StringVar(&interval, "interval", "10s", "Interval between commits (e.g. 10s, 1m)")
 	sendCmd.Flags().StringVar(&filename, "filename", "data.txt", "File to update in the repo")
+	toolutil.AddPayloadFlags(sendCmd, &payload, "Automated update at {nowtime}", &mime, toolutil.CTText)
 	sendCmd.Flags().StringVar(&commitMessage, "message", "Automated commit", "Commit message")
 	sendCmd.Flags().StringVar(&username, "username", "", "Username for remote repository (optional)")
 	sendCmd.Flags().StringVar(&password, "password", "", "Password or token for remote repository (optional)")
@@ -61,7 +65,7 @@ func main() {
 	}
 }
 
-func runGitSend(remote, branch, interval, filename, message, username, password string) error {
+func runGitSend(remote, branch, interval, filename, payload, mime, message, username, password string) error {
 	ctx, cancel := common.SetupGracefulShutdown()
 	defer cancel()
 	// working dir
@@ -83,7 +87,7 @@ func runGitSend(remote, branch, interval, filename, message, username, password 
 	fmt.Printf("Ready. Remote: %s, branch: %s, file: %s. Interval: %s\n", remote, branch, filename, interval)
 
 	return common.StartPeriodicTask(ctx, interval, func() error {
-		if err := doCommit(repo, tmpDir, branch, filename, message, username, password, remote); err != nil {
+		if err := doCommit(repo, tmpDir, branch, filename, payload, mime, message, username, password, remote); err != nil {
 			fmt.Fprintf(os.Stderr, "Commit error: %v\n", err)
 			return err
 		}
@@ -153,9 +157,15 @@ func checkoutOrCreateBranch(repo *git.Repository, branch string) error {
 	return nil
 }
 
-func doCommit(repo *git.Repository, repoPath, branch, filename, message, username, password, remote string) error {
+func doCommit(repo *git.Repository, repoPath, branch, filename, payload, mime, message, username, password, remote string) error {
 	filePath := filepath.Join(repoPath, filename)
-	content := fmt.Sprintf("Automated update at %s\n", time.Now().Format(time.RFC3339))
+
+	// Build payload with interpolation support
+	content, _, err := toolutil.BuildPayload(payload, mime)
+	if err != nil {
+		return fmt.Errorf("build payload: %w", err)
+	}
+
 	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600) // #nosec G304 -- test tool with controlled path
 	if err != nil {
 		return fmt.Errorf("open file: %w", err)
@@ -165,8 +175,11 @@ func doCommit(repo *git.Repository, repoPath, branch, filename, message, usernam
 			fmt.Fprintf(os.Stderr, "Failed to close file: %v\n", err)
 		}
 	}()
-	if _, err := f.WriteString(content); err != nil {
+	if _, err := f.Write(content); err != nil {
 		return fmt.Errorf("write file: %w", err)
+	}
+	if _, err := f.WriteString("\n"); err != nil {
+		return fmt.Errorf("write newline: %w", err)
 	}
 
 	wt, err := repo.Worktree()

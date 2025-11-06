@@ -24,6 +24,7 @@ func main() {
 		sendAddr     string
 		sendSubject  string
 		sendPayload  string
+		sendMIME     string
 		sendInterval string
 		sendStream   string
 	)
@@ -55,7 +56,7 @@ func main() {
 			defer ticker.Stop()
 
 			for range ticker.C {
-				body, _, err := toolutil.BuildPayload(sendPayload, toolutil.CTText)
+				body, _, err := toolutil.BuildPayload(sendPayload, sendMIME)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					continue
@@ -80,7 +81,7 @@ func main() {
 	}
 	sendCmd.Flags().StringVar(&sendAddr, "address", nats.DefaultURL, "NATS server URL")
 	sendCmd.Flags().StringVar(&sendSubject, "subject", "test.subject", "NATS subject")
-	toolutil.AddPayloadFlags(sendCmd, &sendPayload, "{nowtime}", new(string), "")
+	toolutil.AddPayloadFlags(sendCmd, &sendPayload, "{nowtime}", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(sendCmd, &sendInterval, "5s")
 	sendCmd.Flags().StringVar(&sendStream, "stream", "", "JetStream stream name (if set, uses JetStream)")
 

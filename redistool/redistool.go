@@ -27,6 +27,7 @@ func main() {
 		sendStream   string
 		sendGroup    string // unused in send; present for symmetry if needed later
 		sendPayload  string
+		sendMIME     string
 		sendInterval string
 		sendDataKey  string
 	)
@@ -52,7 +53,7 @@ func main() {
 			fmt.Printf("Sending to Redis %s (%s) every %s\n", sendAddr, mode, dur)
 
 			for range ticker.C {
-				body, _, err := toolutil.BuildPayload(sendPayload, toolutil.CTText)
+				body, _, err := toolutil.BuildPayload(sendPayload, sendMIME)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					continue
@@ -82,7 +83,7 @@ func main() {
 	sendCmd.Flags().StringVar(&sendStream, "stream", "", "Redis stream (if set, sends to stream)")
 	sendCmd.Flags().StringVar(&sendGroup, "group", "", "Reserved (no-op for send)")
 	sendCmd.Flags().StringVar(&sendDataKey, "dataKey", "data", "Field name holding data in stream messages")
-	toolutil.AddPayloadFlags(sendCmd, &sendPayload, "Hello, Redis!", new(string), "")
+	toolutil.AddPayloadFlags(sendCmd, &sendPayload, "Hello, Redis!", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(sendCmd, &sendInterval, "5s")
 
 	// SERVE (subscriber / stream consumer)

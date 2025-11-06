@@ -27,6 +27,7 @@ func main() {
 		sendBroker   string
 		sendTopic    string
 		sendPayload  string
+		sendMIME     string
 		sendInterval string
 		sendQoS      int
 		sendRetain   bool
@@ -56,7 +57,7 @@ func main() {
 			fmt.Printf("Connected to %s, topic: %s\n", sendBroker, sendTopic)
 
 			publish := func() error {
-				body, _, err := toolutil.BuildPayload(sendPayload, toolutil.CTText)
+				body, _, err := toolutil.BuildPayload(sendPayload, sendMIME)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					return err
@@ -79,7 +80,7 @@ func main() {
 	sendCmd.Flags().IntVar(&sendQoS, "qos", 0, "MQTT QoS level (0,1,2)")
 	sendCmd.Flags().BoolVar(&sendRetain, "retain", false, "Retain messages")
 	sendCmd.Flags().StringVar(&sendClientID, "clientid", "", "Client ID (auto if empty)")
-	toolutil.AddPayloadFlags(sendCmd, &sendPayload, "{nowtime}", new(string), "")
+	toolutil.AddPayloadFlags(sendCmd, &sendPayload, "{nowtime}", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(sendCmd, &sendInterval, "5s")
 
 	// SERVE command
