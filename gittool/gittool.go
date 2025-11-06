@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/sandrolain/eventkit/pkg/common"
 	"github.com/spf13/cobra"
 )
 
@@ -62,10 +62,8 @@ func main() {
 }
 
 func runGitSend(remote, branch, interval, filename, message, username, password string) error {
-	ctx := context.Background()
-	_ = ctx // reserved for future use
-
-	dur, _ := time.ParseDuration(interval)
+	ctx, cancel := common.SetupGracefulShutdown()
+	defer cancel()
 	// working dir
 	tmpDir, err := os.MkdirTemp("", "gittool-*")
 	if err != nil {
@@ -82,17 +80,16 @@ func runGitSend(remote, branch, interval, filename, message, username, password 
 		return err
 	}
 
-	fmt.Printf("Ready. Remote: %s, branch: %s, file: %s. Interval: %s\n", remote, branch, filename, dur)
-	ticker := time.NewTicker(dur)
-	defer ticker.Stop()
-	for range ticker.C {
+	fmt.Printf("Ready. Remote: %s, branch: %s, file: %s. Interval: %s\n", remote, branch, filename, interval)
+
+	return common.StartPeriodicTask(ctx, interval, func() error {
 		if err := doCommit(repo, tmpDir, branch, filename, message, username, password, remote); err != nil {
 			fmt.Fprintf(os.Stderr, "Commit error: %v\n", err)
-		} else {
-			fmt.Printf("Committed to %s/%s at %s\n", remote, branch, time.Now().Format(time.RFC3339))
+			return err
 		}
-	}
-	return nil
+		fmt.Printf("Committed to %s/%s at %s\n", remote, branch, time.Now().Format(time.RFC3339))
+		return nil
+	})
 }
 
 func cloneOrInitRepo(tmpDir, remote, branch, username, password string) (*git.Repository, error) {

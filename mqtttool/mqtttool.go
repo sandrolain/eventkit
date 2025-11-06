@@ -3,12 +3,11 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/sandrolain/eventkit/pkg/common"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 )
@@ -37,6 +36,9 @@ func main() {
 		Use:   "send",
 		Short: "Publish periodic MQTT messages",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := common.SetupGracefulShutdown()
+			defer cancel()
+
 			if !strings.HasPrefix(sendBroker, tcpPrefix) && !strings.HasPrefix(sendBroker, sslPrefix) && !strings.HasPrefix(sendBroker, wsPrefix) {
 				sendBroker = tcpPrefix + sendBroker
 			}
@@ -51,34 +53,25 @@ func main() {
 			}
 			defer client.Disconnect(250)
 
-			dur, err := time.ParseDuration(sendInterval)
-			if err != nil {
-				return fmt.Errorf("invalid interval: %w", err)
-			}
-			ticker := time.NewTicker(dur)
-			defer ticker.Stop()
-
 			fmt.Printf("Connected to %s, topic: %s\n", sendBroker, sendTopic)
 
-			publish := func() {
+			publish := func() error {
 				body, _, err := toolutil.BuildPayload(sendPayload, toolutil.CTText)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
-					return
+					return err
 				}
 				token := client.Publish(sendTopic, byte(sendQoS), sendRetain, body)
 				token.Wait()
 				if token.Error() != nil {
 					fmt.Fprintf(os.Stderr, "Publish error: %v\n", token.Error())
-				} else {
-					fmt.Printf("Payload sent to %s (%d bytes)\n", sendTopic, len(body))
+					return token.Error()
 				}
+				fmt.Printf("Payload sent to %s (%d bytes)\n", sendTopic, len(body))
+				return nil
 			}
 
-			for range ticker.C {
-				publish()
-			}
-			return nil
+			return common.StartPeriodicTask(ctx, sendInterval, publish)
 		},
 	}
 	sendCmd.Flags().StringVar(&sendBroker, "broker", "tcp://localhost:1883", "MQTT broker URL (tcp://host:port)")
@@ -126,10 +119,7 @@ func main() {
 				return fmt.Errorf("error subscribing to topic: %w", token.Error())
 			}
 
-			sigc := make(chan os.Signal, 1)
-			signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
-			<-sigc
-			fmt.Println("\nInterrupted by user")
+			common.WaitForShutdown()
 			return nil
 		},
 	}

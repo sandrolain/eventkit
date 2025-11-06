@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
 
+	"github.com/sandrolain/eventkit/pkg/common"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 	"github.com/valyala/fasthttp"
@@ -42,16 +42,12 @@ type sendOptions struct {
 }
 
 func (o *sendOptions) run() error {
+	ctx, cancel := common.SetupGracefulShutdown()
+	defer cancel()
+
 	url := o.address + o.path
 
-	dur, err := time.ParseDuration(o.interval)
-	if err != nil {
-		return fmt.Errorf("invalid interval: %w", err)
-	}
-	ticker := time.NewTicker(dur)
-	defer ticker.Stop()
-
-	fmt.Printf("Sending %s requests to %s every %s\n", o.method, url, dur)
+	fmt.Printf("Sending %s requests to %s every %s\n", o.method, url, o.interval)
 
 	sendRequest := func() {
 		reqBody, contentType, err := toolutil.BuildPayload(o.payload, o.mime)
@@ -85,11 +81,10 @@ func (o *sendOptions) run() error {
 		printHTTPResponse(o.method, url, w)
 	}
 
-	for range ticker.C {
-		go sendRequest()
-	}
-
-	select {}
+	return common.StartPeriodicTask(ctx, o.interval, func() error {
+		sendRequest()
+		return nil
+	})
 }
 
 func main() {
@@ -136,6 +131,9 @@ func newServeCommand() *cobra.Command {
 		Use:   "serve",
 		Short: "Run an HTTP server that logs requests",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := common.SetupGracefulShutdown()
+			defer cancel()
+
 			slog.Info("Starting httpdbg", "addr", serveAddr)
 
 			handler := func(ctx *fasthttp.RequestCtx) {
@@ -157,11 +155,23 @@ func newServeCommand() *cobra.Command {
 				toolutil.PrintColoredMessage("HTTP", sections, ctx.Request.Body(), ct)
 			}
 
-			if err := fasthttp.ListenAndServe(serveAddr, handler); err != nil {
-				slog.Error("error serving httpdbg", "err", err)
+			// Start server in goroutine
+			errChan := make(chan error, 1)
+			go func() {
+				if err := fasthttp.ListenAndServe(serveAddr, handler); err != nil {
+					slog.Error("error serving httpdbg", "err", err)
+					errChan <- err
+				}
+			}()
+
+			// Wait for shutdown or error
+			select {
+			case <-ctx.Done():
+				slog.Info("Shutting down gracefully")
+				return nil
+			case err := <-errChan:
 				return err
 			}
-			return nil
 		},
 	}
 

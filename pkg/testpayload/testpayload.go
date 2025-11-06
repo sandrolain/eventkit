@@ -26,7 +26,16 @@ type Payload struct {
 // generates an instance of Payload with realistic random values
 func generatePredictablePayload() Payload {
 	var p Payload
-	_ = faker.FakeData(&p)
+	if err := faker.FakeData(&p); err != nil {
+		// If faker fails, return a minimal valid payload
+		p = Payload{
+			ID:     "00000000-0000-0000-0000-000000000000",
+			Name:   "default",
+			Value:  0.0,
+			Active: false,
+			Time:   0,
+		}
+	}
 	return p
 }
 

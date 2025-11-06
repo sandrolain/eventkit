@@ -198,4 +198,38 @@ func AddIntervalFlag(cmd *cobra.Command, interval *string, def string) {
 	cmd.Flags().StringVar(interval, "interval", def, "Interval between actions, e.g. 2s, 500ms, 1m")
 }
 
-// Note: tool-specific flags (e.g. MQTT broker/topic) should be defined in the tool files.
+// AddServerFlag adds a standardized server/broker/connection flag.
+// Supports aliases for backward compatibility (e.g., --address, --broker).
+func AddServerFlag(cmd *cobra.Command, server *string, def string, aliases ...string) {
+	if def == "" {
+		def = "localhost"
+	}
+	cmd.Flags().StringVar(server, "server", def, "Server/broker/database connection URL")
+	// Add backward compatibility aliases
+	for _, alias := range aliases {
+		cmd.Flags().StringVar(server, alias, def, fmt.Sprintf("(deprecated: use --server) %s", alias))
+		if err := cmd.Flags().MarkDeprecated(alias, "use --server instead"); err != nil {
+			// Log but don't fail - deprecation is not critical
+			fmt.Fprintf(os.Stderr, "Warning: failed to mark flag %s as deprecated: %v\n", alias, err)
+		}
+	}
+}
+
+// AddDestFlag adds a standardized destination flag (topic/path/subject/channel/table).
+// Supports aliases for backward compatibility.
+func AddDestFlag(cmd *cobra.Command, dest *string, def string, usage string, aliases ...string) {
+	if usage == "" {
+		usage = "Destination (topic/path/subject/channel/table)"
+	}
+	cmd.Flags().StringVar(dest, "dest", def, usage)
+	// Add backward compatibility aliases
+	for _, alias := range aliases {
+		cmd.Flags().StringVar(dest, alias, def, fmt.Sprintf("(deprecated: use --dest) %s", usage))
+		if err := cmd.Flags().MarkDeprecated(alias, "use --dest instead"); err != nil {
+			// Log but don't fail - deprecation is not critical
+			fmt.Fprintf(os.Stderr, "Warning: failed to mark flag %s as deprecated: %v\n", alias, err)
+		}
+	}
+}
+
+// Note: tool-specific flags (e.g. MQTT QoS, NATS stream) should be defined in the tool files.

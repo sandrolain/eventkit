@@ -18,6 +18,7 @@ import (
 	coaptcp "github.com/plgd-dev/go-coap/v3/tcp"
 	coapudp "github.com/plgd-dev/go-coap/v3/udp"
 
+	"github.com/sandrolain/eventkit/pkg/common"
 	testpayload "github.com/sandrolain/eventkit/pkg/testpayload"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 )
@@ -43,15 +44,11 @@ func main() {
 		Use:   "send",
 		Short: "Send periodic CoAP POST requests",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logger := toolutil.Logger()
-			dur, err := time.ParseDuration(sendInterval)
-			if err != nil {
-				return fmt.Errorf("invalid interval: %w", err)
-			}
-			ticker := time.NewTicker(dur)
-			defer ticker.Stop()
+			ctx, cancel := common.SetupGracefulShutdown()
+			defer cancel()
 
-			logger.Info("Sending CoAP POST periodically", "proto", sendProto, "addr", sendAddress, "path", sendPath, "every", dur)
+			logger := toolutil.Logger()
+			logger.Info("Sending CoAP POST periodically", "proto", sendProto, "addr", sendAddress, "path", sendPath, "interval", sendInterval)
 
 			sendOnce := func() {
 				var body []byte
@@ -123,10 +120,10 @@ func main() {
 				}
 			}
 
-			for range ticker.C {
-				go sendOnce()
-			}
-			select {}
+			return common.StartPeriodicTask(ctx, sendInterval, func() error {
+				sendOnce()
+				return nil
+			})
 		},
 	}
 
@@ -145,6 +142,9 @@ func main() {
 		Use:   "serve",
 		Short: "Run a CoAP server that logs requests",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := common.SetupGracefulShutdown()
+			defer cancel()
+
 			logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 			logger.Info("Starting coapdbg", "proto", serveProto, "addr", serveAddr)
 
@@ -152,7 +152,21 @@ func main() {
 			if err := router.Handle("/", SimpleOKHandler(serveProto)); err != nil {
 				return err
 			}
-			return Serve(serveProto, serveAddr, router)
+
+			// Start server in goroutine
+			errChan := make(chan error, 1)
+			go func() {
+				errChan <- Serve(serveProto, serveAddr, router)
+			}()
+
+			// Wait for shutdown or error
+			select {
+			case <-ctx.Done():
+				logger.Info("Shutting down gracefully")
+				return nil
+			case err := <-errChan:
+				return err
+			}
 		},
 	}
 	serveCmd.Flags().StringVar(&serveAddr, "address", ":5683", "Listen address (e.g.: :5683)")

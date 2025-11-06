@@ -8,6 +8,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/sandrolain/eventkit/pkg/common"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 )
@@ -30,10 +31,8 @@ func main() {
 		Use:   "send",
 		Short: "Periodically insert rows into PostgreSQL",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dur, err := time.ParseDuration(interval)
-			if err != nil {
-				return fmt.Errorf("invalid interval: %w", err)
-			}
+			ctx, cancel := common.SetupGracefulShutdown()
+			defer cancel()
 
 			db, err := sql.Open("postgres", connStr)
 			if err != nil {
@@ -45,36 +44,35 @@ func main() {
 				}
 			}()
 
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
+			dbCtx, dbCancel := context.WithTimeout(ctx, 10*time.Second)
+			defer dbCancel()
 
 			createTable := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 				id SERIAL PRIMARY KEY,
 				created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 				data TEXT
 			)`, table)
-			if _, err := db.ExecContext(ctx, createTable); err != nil {
+			if _, err := db.ExecContext(dbCtx, createTable); err != nil {
 				return fmt.Errorf("table creation error: %w", err)
 			}
 			fmt.Printf("Table '%s' ready.\n", table)
 
-			ticker := time.NewTicker(dur)
-			defer ticker.Stop()
-			fmt.Printf("Inserting into %s every %s\n", table, dur)
-			for range ticker.C {
+			fmt.Printf("Inserting into %s every %s\n", table, interval)
+
+			return common.StartPeriodicTask(ctx, interval, func() error {
 				b, _, err := toolutil.BuildPayload(payload, toolutil.CTText)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
-					continue
+					return err
 				}
 				insert := fmt.Sprintf("INSERT INTO %s (data) VALUES ($1)", table) // #nosec G201 -- test tool with controlled table name
 				if _, err := db.Exec(insert, string(b)); err != nil {
 					fmt.Fprintf(os.Stderr, "Insert error: %v\n", err)
-				} else {
-					fmt.Printf("Inserted: %s\n", time.Now().Format(time.RFC3339))
+					return err
 				}
-			}
-			return nil
+				fmt.Printf("Inserted: %s\n", time.Now().Format(time.RFC3339))
+				return nil
+			})
 		},
 	}
 
