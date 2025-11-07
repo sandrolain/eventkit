@@ -20,16 +20,17 @@ tasks:
   build:
     desc: Build all CLI tools
     cmds:
-      - go build ./coaptool
-      - go build ./httptool
-      - go build ./mqtttool
-      - go build ./natstool
-      - go build ./kafkatool
-      - go build ./redistool
-      - go build ./pubsubtool
-      - go build ./pgsqltool
-      - go build ./gittool
-      - go build ./mongodbtool
+      - mkdir -p bin
+      - go build -o bin/coaptool ./coaptool
+      - go build -o bin/httptool ./httptool
+      - go build -o bin/mqtttool ./mqtttool
+      - go build -o bin/natstool ./natstool
+      - go build -o bin/kafkatool ./kafkatool
+      - go build -o bin/redistool ./redistool
+      - go build -o bin/pubsubtool ./pubsubtool
+      - go build -o bin/pgsqltool ./pgsqltool
+      - go build -o bin/gittool ./gittool
+      - go build -o bin/mongotool ./mongotool
 
   fmt-check:
     desc: Check Go code formatting without making changes
@@ -62,13 +63,33 @@ tasks:
       - govulncheck ./...
 
   test:
-    desc: Run tests with coverage
+    desc: Run unit tests with coverage
     cmds:
-      - echo "Running tests with coverage..."
+      - echo "Running unit tests with coverage..."
       - go test -coverprofile=coverage.out -covermode=atomic ./pkg/...
       - go tool cover -html=coverage.out -o coverage.html
       - echo "Coverage report generated at coverage.html"
       - go tool cover -func=coverage.out
+
+  test-integration:
+    desc: Run integration tests with testcontainers
+    cmds:
+      - echo "Running integration tests..."
+      - go test ./test/integration/... -v -timeout 5m
+
+  test-e2e:
+    desc: Run end-to-end tests
+    deps: [services-start]
+    cmds:
+      - echo "Running E2E tests..."
+      - ./test/e2e/run-e2e.sh
+
+  test-all:
+    desc: Run all tests (unit, integration, e2e)
+    cmds:
+      - task: test
+      - task: test-integration
+      - task: test-e2e
 
   gosec:
     desc: Run security checks with gosec
@@ -120,9 +141,83 @@ tasks:
     desc: Clean build and analysis artifacts
     cmds:
       - go clean -cache -testcache -modcache
-      - rm -f coaptool httptool mqtttool natstool kafkatool redistool pubsubtool pgsqltool gittool mongodbtool
+      - rm -rf bin/
       - rm -f coverage.out
       - rm -f coverage.html
       - rm -f security-report.json
       - rm -f trivy-results.json
       - rm -f licenses.csv
+
+  # Docker Services Management
+  services-start:
+    desc: Start all Docker services
+    cmds:
+      - echo "Starting Docker services..."
+      - docker compose up -d
+      - echo "Waiting for services to be ready..."
+      - sleep 10
+      - echo "Initializing MongoDB replica set..."
+      - docker exec eventkit-mongodb mongosh --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"localhost:27017"}]})'
+      - echo "Services started successfully"
+
+  services-stop:
+    desc: Stop all Docker services
+    cmds:
+      - echo "Stopping Docker services..."
+      - docker compose down
+
+  services-restart:
+    desc: Restart all Docker services
+    cmds:
+      - task: services-stop
+      - task: services-start
+
+  services-status:
+    desc: Show status of all Docker services
+    cmds:
+      - docker compose ps
+
+  services-logs:
+    desc: Show logs from all Docker services
+    cmds:
+      - docker compose logs -f
+
+  services-health:
+    desc: Check health of all Docker services
+    cmds:
+      - echo "Checking service health..."
+      - |
+        echo "MQTT (NanoMQ):" && (nc -z localhost 1883 && echo "✓ Running" || echo "✗ Not accessible")
+        echo "NATS:" && (nc -z localhost 4222 && echo "✓ Running" || echo "✗ Not accessible")
+        echo "Redis:" && (nc -z localhost 6379 && echo "✓ Running" || echo "✗ Not accessible")
+        echo "PostgreSQL:" && (nc -z localhost 5432 && echo "✓ Running" || echo "✗ Not accessible")
+        echo "MongoDB:" && (nc -z localhost 27017 && echo "✓ Running" || echo "✗ Not accessible")
+        echo "Kafka:" && (nc -z localhost 9092 && echo "✓ Running" || echo "✗ Not accessible")
+        echo "HTTP Server:" && (nc -z localhost 8080 && echo "✓ Running" || echo "✗ Not accessible")
+        echo "CoAP Server:" && (nc -zu localhost 5683 && echo "✓ Running" || echo "✗ Not accessible")
+
+  services-clean:
+    desc: Stop services and remove volumes
+    cmds:
+      - echo "Stopping services and cleaning volumes..."
+      - docker compose down -v
+      - echo "Services and volumes removed"
+
+  # Development workflow
+  dev-setup:
+    desc: Setup complete development environment
+    cmds:
+      - task: install-deps
+      - task: services-start
+      - echo "Development environment ready!"
+
+  ci:
+    desc: Run CI pipeline (lint, test, build)
+    cmds:
+      - task: fmt-check
+      - task: lint
+      - task: vet
+      - task: test
+      - task: test-integration
+      - task: build
+      - echo "CI pipeline completed successfully!"

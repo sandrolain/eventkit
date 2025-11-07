@@ -1,0 +1,141 @@
+services:
+  # MQTT Broker - NanoMQ
+  nanomq:
+    image: emqx/nanomq:latest
+    container_name: eventkit-nanomq
+    ports:
+      - "1883:1883" # MQTT
+      - "8883:8883" # MQTT/SSL
+      - "8083:8083" # WebSocket
+      - "18083:18083" # HTTP API
+    environment:
+      NANOMQ_BROKER_URL: "nmq-tcp://0.0.0.0:1883"
+    restart: unless-stopped
+    networks:
+      - eventkit
+
+  # NATS Server with JetStream
+  nats:
+    image: nats:latest
+    container_name: eventkit-nats
+    ports:
+      - "4222:4222" # Client
+      - "8222:8222" # HTTP Monitoring
+      - "6222:6222" # Routing
+    command: ["-js", "-m", "8222"]
+    restart: unless-stopped
+    networks:
+      - eventkit
+
+  # Redis with Streams support
+  redis:
+    image: redis:alpine
+    container_name: eventkit-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - eventkit
+
+  # PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    container_name: eventkit-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: eventkit
+      POSTGRES_PASSWORD: eventkit
+      POSTGRES_DB: eventkit
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - eventkit
+
+  # Apache Kafka
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: eventkit-kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      # KRaft mode (no Zookeeper needed)
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Auto create topics
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-data:/bitnami/kafka
+    restart: unless-stopped
+    networks:
+      - eventkit
+
+  # MongoDB with replica set for Change Streams
+  mongodb:
+    image: mongo:7
+    container_name: eventkit-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: eventkit
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongodb-data:/data/db
+      - ./scripts/init-mongo.sh:/docker-entrypoint-initdb.d/init-mongo.sh:ro
+    restart: unless-stopped
+    networks:
+      - eventkit
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # HTTP Test Server (simple echo server)
+  httpserver:
+    image: mendhak/http-https-echo:latest
+    container_name: eventkit-httpserver
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    environment:
+      HTTP_PORT: 8080
+      HTTPS_PORT: 8443
+    restart: unless-stopped
+    networks:
+      - eventkit
+
+  # CoAP Test Server (using Eclipse Californium)
+  # Note: Using a simple container that runs a CoAP server
+  coapserver:
+    build:
+      context: ./test/coap-server
+      dockerfile: Dockerfile
+    container_name: eventkit-coapserver
+    ports:
+      - "5683:5683/udp" # CoAP
+      - "5684:5684/tcp" # CoAP over TCP
+    restart: unless-stopped
+    networks:
+      - eventkit
+
+volumes:
+  redis-data:
+  postgres-data:
+  kafka-data:
+  mongodb-data:
+
+networks:
+  eventkit:
+    driver: bridge

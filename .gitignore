@@ -8,3 +8,30 @@ dist/
 build/
 .env
 context/
+bin/
+
+# Binaries
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.html
+
+# E2E test artifacts
+test/e2e/bin/
+test/e2e/*.log
+
+# Docker
+docker-compose.override.yml
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+
+# Task runner
+.task/
