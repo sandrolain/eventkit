@@ -4,11 +4,11 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/sandrolain/eventkit)](https://goreportcard.com/report/github.com/sandrolain/eventkit)
 
-EventKit is a comprehensive collection of command-line tools designed for testing and interacting with various protocols and event brokers. It provides unified interfaces for CoAP, MQTT, NATS, Kafka, HTTP, Redis, Google Pub/Sub, PostgreSQL, and Git, making it ideal for testing event-driven systems, debugging message flows, and performance evaluation.
+EventKit is a comprehensive collection of command-line tools designed for testing and interacting with various protocols and event brokers. It provides unified interfaces for CoAP, MQTT, NATS, Kafka, HTTP, Redis, Google Pub/Sub, PostgreSQL, MongoDB, and Git, making it ideal for testing event-driven systems, debugging message flows, and performance evaluation.
 
 ## Features
 
-✅ **Multi-Protocol Support** - Works with 9 different protocols and event brokers  
+✅ **Multi-Protocol Support** - Works with 10 different protocols and event brokers  
 ✅ **Payload Interpolation** - Dynamic payload generation with variables like `{nowtime}`, `{uuid}`, `{json}`  
 ✅ **MIME Type Support** - Handles text/plain, application/json, and application/cbor  
 ✅ **Graceful Shutdown** - Proper signal handling (SIGINT/SIGTERM) for clean exits  
@@ -35,6 +35,7 @@ go install github.com/sandrolain/eventkit/httptool@latest
 go install github.com/sandrolain/eventkit/redistool@latest
 go install github.com/sandrolain/eventkit/pubsubtool@latest
 go install github.com/sandrolain/eventkit/pgsqltool@latest
+go install github.com/sandrolain/eventkit/mongotool@latest
 go install github.com/sandrolain/eventkit/gittool@latest
 ```
 
@@ -183,6 +184,29 @@ pgsqltool receive --conn "postgres://user:pass@localhost/mydb" --channel app-eve
 - `--conn` - PostgreSQL connection string
 - `--channel` - NOTIFY channel name
 
+### 🍃 MongoDB Tool
+
+Test MongoDB with document insertion and Change Streams monitoring.
+
+```bash
+# Insert documents periodically
+mongotool send --server mongodb://localhost:27017 --database testdb --collection events \
+  --payload '{"type": "sensor", "value": {rand}, "timestamp": "{nowtime}"}' --interval 5s
+
+# Watch Change Streams for real-time updates
+mongotool serve --server mongodb://localhost:27017 --database testdb --collection events
+```
+
+**Key Options:**
+
+- `--server` - MongoDB connection string (mongodb://host:port)
+- `--database` - Database name
+- `--collection` - Collection name
+- `--username` - MongoDB username (optional)
+- `--password` - MongoDB password (optional)
+
+**Note:** Change Streams require a MongoDB replica set. The tool automatically adds an `_insertedAt` timestamp to each document.
+
 ### 📦 Git Tool
 
 Automated Git commits for testing CI/CD pipelines or Git hooks.
@@ -278,6 +302,17 @@ pgsqltool send --conn "postgres://app:secret@db:5432/events" \
   --channel cache-invalidate --payload '{"table": "users", "id": {rand}}'
 ```
 
+**Real-Time Data Monitoring**
+
+```bash
+# Monitor MongoDB Change Streams
+mongotool serve --server mongodb://localhost:27017 --database myapp --collection logs
+
+# Generate test data
+mongotool send --server mongodb://localhost:27017 --database myapp --collection logs \
+  --payload '{"level": "info", "msg": "Test event {uuid}", "time": "{nowtime}"}' --interval 3s
+```
+
 ## Development
 
 ### Requirements
@@ -314,6 +349,7 @@ eventkit/
 ├── redistool/          # Redis tool
 ├── pubsubtool/         # Google Pub/Sub tool
 ├── pgsqltool/          # PostgreSQL tool
+├── mongotool/          # MongoDB tool
 └── gittool/            # Git tool
 ```
 
