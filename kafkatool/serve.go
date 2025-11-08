@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -49,8 +48,13 @@ func serveCommand() *cobra.Command {
 					logger.Info("Shutting down gracefully")
 					return nil
 				default:
-					m, err := r.ReadMessage(context.Background())
+					m, err := r.ReadMessage(ctx)
 					if err != nil {
+						// Check if context was cancelled (graceful shutdown)
+						if ctx.Err() != nil {
+							logger.Info("Shutting down gracefully")
+							return nil
+						}
 						logger.Error("Error reading message", "error", err)
 						return err
 					}
