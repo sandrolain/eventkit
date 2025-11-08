@@ -2,10 +2,9 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/sandrolain/eventkit/pkg/common"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 )
@@ -24,6 +23,9 @@ func sendCommand() *cobra.Command {
 		Use:   "send",
 		Short: "Publish periodic messages to a NATS subject",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := common.SetupGracefulShutdown()
+			defer cancel()
+
 			nc, err := nats.Connect(sendAddr)
 			if err != nil {
 				return fmt.Errorf("error connecting to NATS: %w", err)
@@ -45,35 +47,30 @@ func sendCommand() *cobra.Command {
 				toolutil.PrintKeyValue("Subject", sendSubject)
 			}
 
-			dur, err := time.ParseDuration(sendInterval)
-			if err != nil {
-				return fmt.Errorf("invalid interval: %w", err)
-			}
-			ticker := time.NewTicker(dur)
-			defer ticker.Stop()
-
-			for range ticker.C {
+			publish := func() error {
 				body, _, err := toolutil.BuildPayload(sendPayload, sendMIME)
 				if err != nil {
-					fmt.Fprintln(os.Stderr, err)
-					continue
+					toolutil.PrintError("Payload build error: %v", err)
+					return err
 				}
 				if sendStream != "" {
 					ack, err := js.Publish(sendSubject, body)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "JetStream publish error: %v\n", err)
-					} else {
-						toolutil.PrintInfo("Published to JetStream, sequence: %d", ack.Sequence)
+						toolutil.PrintError("JetStream publish error: %v", err)
+						return err
 					}
+					toolutil.PrintInfo("Published to JetStream, sequence: %d", ack.Sequence)
 				} else {
 					if err := nc.Publish(sendSubject, body); err != nil {
-						fmt.Fprintf(os.Stderr, "Publish error: %v\n", err)
-					} else {
-						toolutil.PrintInfo("Published %d bytes", len(body))
+						toolutil.PrintError("Publish error: %v", err)
+						return err
 					}
+					toolutil.PrintInfo("Published %d bytes", len(body))
 				}
+				return nil
 			}
-			return nil
+
+			return common.StartPeriodicTask(ctx, sendInterval, publish)
 		},
 	}
 

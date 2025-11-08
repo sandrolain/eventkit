@@ -71,9 +71,6 @@ func serveCommand() *cobra.Command {
 					return fmt.Errorf("error subscribing to subject: %w", err)
 				}
 			}
-			if err := sub.Drain(); err != nil {
-				toolutil.PrintError("Failed to drain subscription: %v", err)
-			}
 
 			if subStream != "" {
 				toolutil.PrintSuccess("Subscribed to NATS with JetStream")
@@ -87,6 +84,10 @@ func serveCommand() *cobra.Command {
 			}
 
 			common.WaitForShutdown()
+
+			if err := sub.Drain(); err != nil {
+				toolutil.PrintError("Failed to drain subscription: %v", err)
+			}
 			return nil
 		},
 	}
