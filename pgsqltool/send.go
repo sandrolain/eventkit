@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	"github.com/sandrolain/eventkit/pkg/common"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
@@ -47,8 +47,10 @@ func sendCommand() *cobra.Command {
 					return err
 				}
 
-				notifySQL := fmt.Sprintf("NOTIFY %s, $1", channel)
-				if _, err := db.Exec(notifySQL, string(b)); err != nil {
+				// NOTIFY doesn't support parameterized queries, so we must build the SQL string directly
+				// Use pq.QuoteLiteral for safe escaping
+				notifySQL := fmt.Sprintf("NOTIFY %s, %s", pq.QuoteIdentifier(channel), pq.QuoteLiteral(string(b)))
+				if _, err := db.Exec(notifySQL); err != nil {
 					logger.Error("NOTIFY error", "error", err)
 					return err
 				}
