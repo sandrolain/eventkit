@@ -113,8 +113,15 @@ func EncodeCBORFromJSON(jsonStr string) ([]byte, error) {
 
 // BuildPayload builds request payload bytes and content-type from either a testpayload type or a raw payload with MIME.
 // Priority: if testType is provided, it's used; otherwise raw payload with MIME is used; returns (nil, "") if neither provided.
+// Uses default template delimiters "{{" and "}}".
 func BuildPayload(rawPayload string, mime string) ([]byte, string, error) {
-	b, err := testpayload.Interpolate(rawPayload)
+	return BuildPayloadWithDelimiters(rawPayload, mime, "{{", "}}")
+}
+
+// BuildPayloadWithDelimiters builds request payload with custom template delimiters.
+// Supports placeholders: {{json}}, {{cbor}}, {{sentiment}}, {{sentence}}, {{datetime}}, {{nowtime}}, {{counter}}, {{file:/path}}
+func BuildPayloadWithDelimiters(rawPayload string, mime string, openDelim string, closeDelim string) ([]byte, string, error) {
+	b, err := testpayload.InterpolateWithDelimiters(rawPayload, openDelim, closeDelim)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to interpolate payload: %w", err)
 	}
@@ -225,8 +232,52 @@ func AddPayloadFlags(cmd *cobra.Command, payload *string, payloadDef string, mim
 	if mimeDef == "" {
 		mimeDef = CTJSON
 	}
-	cmd.Flags().StringVar(payload, "payload", payloadDef, "Payload to send (supports placeholders: {json},{cbor},{sentiment},{sentence},{datetime},{nowtime})")
+	cmd.Flags().StringVar(payload, "payload", payloadDef, "Payload to send (supports placeholders: {{json}},{{cbor}},{{sentiment}},{{sentence}},{{datetime}},{{nowtime}},{{counter}},{{file:/path}})")
 	cmd.Flags().StringVar(mime, "mime", mimeDef, "Payload MIME type (application/json, application/cbor, text/plain)")
+}
+
+// AddTemplateDelimiterFlags adds flags for customizing template variable delimiters.
+func AddTemplateDelimiterFlags(cmd *cobra.Command, openDelim *string, closeDelim *string) {
+	cmd.Flags().StringVar(openDelim, "template-open", "{{", "Template variable opening delimiter")
+	cmd.Flags().StringVar(closeDelim, "template-close", "}}", "Template variable closing delimiter")
+}
+
+// ParseHeaders parses a slice of "key=value" strings into a map.
+// Returns an error if any header is malformed.
+// Uses default template delimiters "{{" and "}}".
+func ParseHeaders(headers []string) (map[string]string, error) {
+	return ParseHeadersWithDelimiters(headers, "{{", "}}")
+}
+
+// ParseHeadersWithDelimiters parses headers with template interpolation using custom delimiters.
+// Header values support template variables like {{nowtime}}, {{counter}}, {{file:/path}}, etc.
+func ParseHeadersWithDelimiters(headers []string, openDelim string, closeDelim string) (map[string]string, error) {
+	result := make(map[string]string)
+	for _, h := range headers {
+		parts := strings.SplitN(h, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid header format '%s', expected key=value", h)
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if key == "" {
+			return nil, fmt.Errorf("empty header key in '%s'", h)
+		}
+
+		// Interpolate template variables in header value
+		interpolatedValue, err := testpayload.InterpolateWithDelimiters(value, openDelim, closeDelim)
+		if err != nil {
+			return nil, fmt.Errorf("failed to interpolate header value for '%s': %w", key, err)
+		}
+
+		result[key] = string(interpolatedValue)
+	}
+	return result, nil
+}
+
+// AddHeadersFlag adds a repeatable flag for metadata/headers in key=value format.
+func AddHeadersFlag(cmd *cobra.Command, headers *[]string) {
+	cmd.Flags().StringArrayVarP(headers, "header", "H", []string{}, "Metadata/header in key=value format (can be repeated)")
 }
 
 // AddIntervalFlag adds a common interval flag for periodic actions.

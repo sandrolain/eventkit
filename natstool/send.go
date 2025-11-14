@@ -17,6 +17,9 @@ func sendCommand() *cobra.Command {
 		sendMIME     string
 		sendInterval string
 		sendStream   string
+		headers      []string
+		openDelim    string
+		closeDelim   string
 	)
 
 	cmd := &cobra.Command{
@@ -33,6 +36,11 @@ func sendCommand() *cobra.Command {
 			defer nc.Close()
 
 			var js nats.JetStreamContext
+			headerMap, err := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
+			if err != nil {
+				return fmt.Errorf("invalid headers: %w", err)
+			}
+
 			if sendStream != "" {
 				if js, err = nc.JetStream(); err != nil {
 					return fmt.Errorf("JetStream context error: %w", err)
@@ -48,20 +56,28 @@ func sendCommand() *cobra.Command {
 			}
 
 			publish := func() error {
-				body, _, err := toolutil.BuildPayload(sendPayload, sendMIME)
+				body, _, err := toolutil.BuildPayloadWithDelimiters(sendPayload, sendMIME, openDelim, closeDelim)
 				if err != nil {
 					toolutil.PrintError("Payload build error: %v", err)
 					return err
 				}
+
+				// Build NATS message with headers
+				msg := nats.NewMsg(sendSubject)
+				msg.Data = body
+				for k, v := range headerMap {
+					msg.Header.Add(k, v)
+				}
+
 				if sendStream != "" {
-					ack, err := js.Publish(sendSubject, body)
+					ack, err := js.PublishMsg(msg)
 					if err != nil {
 						toolutil.PrintError("JetStream publish error: %v", err)
 						return err
 					}
 					toolutil.PrintInfo("Published to JetStream, sequence: %d", ack.Sequence)
 				} else {
-					if err := nc.Publish(sendSubject, body); err != nil {
+					if err := nc.PublishMsg(msg); err != nil {
 						toolutil.PrintError("Publish error: %v", err)
 						return err
 					}
@@ -79,6 +95,8 @@ func sendCommand() *cobra.Command {
 	toolutil.AddPayloadFlags(cmd, &sendPayload, "{nowtime}", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
 	cmd.Flags().StringVar(&sendStream, "stream", "", "JetStream stream name (if set, uses JetStream)")
+	toolutil.AddHeadersFlag(cmd, &headers)
+	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
 
 	return cmd
 }

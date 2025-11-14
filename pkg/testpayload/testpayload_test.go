@@ -2,6 +2,8 @@ package testpayload
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -113,15 +115,15 @@ func TestInterpolate(t *testing.T) {
 		contains string
 	}{
 		{"Plain text", "hello world", false, ""},
-		{"JSON placeholder", "{json}", true, ""},
-		{"CBOR placeholder", "{cbor}", true, ""},
-		{"Sentiment placeholder", "{sentiment}", false, ""},
-		{"Sentence placeholder", "{sentence}", false, ""},
-		{"DateTime placeholder", "{datetime}", false, ""},
-		{"NowTime placeholder", "{nowtime}", false, ""},
-		{"Counter placeholder", "{counter}", false, ""},
-		{"Mixed text", "Message: {sentence}", false, "Message:"},
-		{"Multiple placeholders", "ID: {counter}, Time: {nowtime}", false, "ID:"},
+		{"JSON placeholder", "{{json}}", true, ""},
+		{"CBOR placeholder", "{{cbor}}", true, ""},
+		{"Sentiment placeholder", "{{sentiment}}", false, ""},
+		{"Sentence placeholder", "{{sentence}}", false, ""},
+		{"DateTime placeholder", "{{datetime}}", false, ""},
+		{"NowTime placeholder", "{{nowtime}}", false, ""},
+		{"Counter placeholder", "{{counter}}", false, ""},
+		{"Mixed text", "Message: {{sentence}}", false, "Message:"},
+		{"Multiple placeholders", "ID: {{counter}}, Time: {{nowtime}}", false, "ID:"},
 	}
 
 	for _, tt := range tests {
@@ -144,6 +146,170 @@ func TestInterpolate(t *testing.T) {
 				t.Errorf("Interpolate() result should contain '%s', got: %s", tt.contains, string(result))
 			}
 		})
+	}
+}
+
+func TestInterpolateWithDelimiters(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		openDelim  string
+		closeDelim string
+		want       string
+		wantErr    bool
+	}{
+		{
+			name:       "Custom delimiters - double brackets",
+			input:      "Hello [[sentence]]",
+			openDelim:  "[[",
+			closeDelim: "]]",
+			wantErr:    false,
+		},
+		{
+			name:       "Custom delimiters - percent signs",
+			input:      "Count: %counter%",
+			openDelim:  "%",
+			closeDelim: "%",
+			wantErr:    false,
+		},
+		{
+			name:       "Default delimiters",
+			input:      "Message: {{sentence}}",
+			openDelim:  "{{",
+			closeDelim: "}}",
+			wantErr:    false,
+		},
+		{
+			name:       "Mixed text with custom delimiters",
+			input:      "ID: <<counter>>, Time: <<nowtime>>",
+			openDelim:  "<<",
+			closeDelim: ">>",
+			wantErr:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := InterpolateWithDelimiters(tt.input, tt.openDelim, tt.closeDelim)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InterpolateWithDelimiters() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && len(result) == 0 {
+				t.Error("InterpolateWithDelimiters() returned empty result")
+			}
+		})
+	}
+}
+
+func TestInterpolateWithDelimiters_FilePlaceholder(t *testing.T) {
+	// Create a temporary file
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.txt")
+	testContent := "Hello from file!"
+
+	// #nosec G306 -- writing file for test payload generation
+	if err := os.WriteFile(tmpFile, []byte(testContent), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		input      string
+		openDelim  string
+		closeDelim string
+		want       string
+		wantErr    bool
+	}{
+		{
+			name:       "File placeholder with default delimiters",
+			input:      "{{file:" + tmpFile + "}}",
+			openDelim:  "{{",
+			closeDelim: "}}",
+			want:       testContent,
+			wantErr:    false,
+		},
+		{
+			name:       "File placeholder with custom delimiters",
+			input:      "[[file:" + tmpFile + "]]",
+			openDelim:  "[[",
+			closeDelim: "]]",
+			want:       testContent,
+			wantErr:    false,
+		},
+		{
+			name:       "Mixed content with file",
+			input:      "Content: {{file:" + tmpFile + "}} - end",
+			openDelim:  "{{",
+			closeDelim: "}}",
+			want:       "Content: " + testContent + " - end",
+			wantErr:    false,
+		},
+		{
+			name:       "Non-existent file",
+			input:      "{{file:/nonexistent/file.txt}}",
+			openDelim:  "{{",
+			closeDelim: "}}",
+			wantErr:    true,
+		},
+		{
+			name:       "Empty file path",
+			input:      "{{file:}}",
+			openDelim:  "{{",
+			closeDelim: "}}",
+			wantErr:    true,
+		},
+		{
+			name:       "Unclosed file placeholder",
+			input:      "{{file:" + tmpFile,
+			openDelim:  "{{",
+			closeDelim: "}}",
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := InterpolateWithDelimiters(tt.input, tt.openDelim, tt.closeDelim)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InterpolateWithDelimiters() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if string(result) != tt.want {
+					t.Errorf("InterpolateWithDelimiters() = %q, want %q", string(result), tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestInterpolateWithDelimiters_MultipleFiles(t *testing.T) {
+	// Create temporary files
+	tmpDir := t.TempDir()
+	file1 := filepath.Join(tmpDir, "file1.txt")
+	file2 := filepath.Join(tmpDir, "file2.txt")
+
+	// #nosec G306 -- writing file for test payload generation
+	if err := os.WriteFile(file1, []byte("Content1"), 0644); err != nil {
+		t.Fatalf("Failed to create test file1: %v", err)
+	}
+	// #nosec G306 -- writing file for test payload generation
+	if err := os.WriteFile(file2, []byte("Content2"), 0644); err != nil {
+		t.Fatalf("Failed to create test file2: %v", err)
+	}
+
+	input := "First: {{file:" + file1 + "}}, Second: {{file:" + file2 + "}}"
+	want := "First: Content1, Second: Content2"
+
+	result, err := InterpolateWithDelimiters(input, "{{", "}}")
+	if err != nil {
+		t.Errorf("InterpolateWithDelimiters() error = %v", err)
+		return
+	}
+
+	if string(result) != want {
+		t.Errorf("InterpolateWithDelimiters() = %q, want %q", string(result), want)
 	}
 }
 

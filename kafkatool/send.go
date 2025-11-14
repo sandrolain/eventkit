@@ -20,6 +20,9 @@ func sendCommand() *cobra.Command {
 		sendPayload  string
 		sendMIME     string
 		sendInterval string
+		headers      []string
+		openDelim    string
+		closeDelim   string
 	)
 
 	cmd := &cobra.Command{
@@ -44,17 +47,27 @@ func sendCommand() *cobra.Command {
 			ticker := time.NewTicker(dur)
 			defer ticker.Stop()
 
+			headerMap, err := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
+			if err != nil {
+				return fmt.Errorf("invalid headers: %w", err)
+			}
+
 			logger := toolutil.Logger()
 			logger.Info("Producing to Kafka", "brokers", sendBrokers, "topic", sendTopic, "interval", sendInterval)
 
 			for range ticker.C {
-				body, _, err := toolutil.BuildPayload(sendPayload, sendMIME)
+				body, _, err := toolutil.BuildPayloadWithDelimiters(sendPayload, sendMIME, openDelim, closeDelim)
 				if err != nil {
 					logger.Error("Failed to build payload", "error", err)
 					continue
 				}
+				msg := kafka.Message{Value: body}
+				for k, v := range headerMap {
+					msg.Headers = append(msg.Headers, kafka.Header{Key: k, Value: []byte(v)})
+				}
+
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				err = w.WriteMessages(ctx, kafka.Message{Value: body})
+				err = w.WriteMessages(ctx, msg)
 				cancel()
 				if err != nil {
 					logger.Error("Failed to send message", "error", err)
@@ -70,6 +83,8 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&sendTopic, "topic", "test", "Kafka topic")
 	toolutil.AddPayloadFlags(cmd, &sendPayload, "Hello, Kafka!", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
+	toolutil.AddHeadersFlag(cmd, &headers)
+	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
 
 	return cmd
 }

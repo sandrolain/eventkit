@@ -27,6 +27,9 @@ func sendCommand() *cobra.Command {
 		sendQoS      int
 		sendRetain   bool
 		sendClientID string
+		headers      []string
+		openDelim    string
+		closeDelim   string
 	)
 
 	cmd := &cobra.Command{
@@ -56,8 +59,14 @@ func sendCommand() *cobra.Command {
 			toolutil.PrintKeyValue("QoS", sendQoS)
 			toolutil.PrintKeyValue("Interval", sendInterval)
 
+			_, errHeaders := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
+			if errHeaders != nil {
+				return fmt.Errorf("invalid headers: %w", errHeaders)
+			}
+			// Note: MQTT v5 user properties can be set from headers
+
 			publish := func() error {
-				body, _, err := toolutil.BuildPayload(sendPayload, sendMIME)
+				body, _, err := toolutil.BuildPayloadWithDelimiters(sendPayload, sendMIME, openDelim, closeDelim)
 				if err != nil {
 					toolutil.PrintError("Payload build error: %v", err)
 					return err
@@ -83,6 +92,8 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&sendClientID, "clientid", "", "Client ID (auto if empty)")
 	toolutil.AddPayloadFlags(cmd, &sendPayload, "{nowtime}", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
+	toolutil.AddHeadersFlag(cmd, &headers)
+	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
 
 	return cmd
 }

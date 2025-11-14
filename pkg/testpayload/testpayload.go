@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -83,6 +84,12 @@ func GenerateCounter() int {
 }
 
 func Interpolate(str string) ([]byte, error) {
+	return InterpolateWithDelimiters(str, "{{", "}}")
+}
+
+// InterpolateWithDelimiters performs template variable interpolation with custom delimiters
+// Supports placeholders: json, cbor, sentiment, sentence, datetime, nowtime, counter, file:/path
+func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) ([]byte, error) {
 	placeholders := map[string]TestPayloadType{
 		"json":      TestPayloadJSON,
 		"cbor":      TestPayloadCBOR,
@@ -95,7 +102,7 @@ func Interpolate(str string) ([]byte, error) {
 
 	result := str
 	for key, typ := range placeholders {
-		ph := "{" + key + "}"
+		ph := openDelim + key + closeDelim
 
 		if str == ph {
 			// If the entire string is just the placeholder, return the generated value directly
@@ -110,6 +117,41 @@ func Interpolate(str string) ([]byte, error) {
 			result = strings.ReplaceAll(result, ph, string(val))
 		}
 	}
+
+	// Handle file:// placeholder
+	filePrefix := openDelim + "file:"
+	fileSuffix := closeDelim
+	if strings.Contains(result, filePrefix) {
+		for {
+			startIdx := strings.Index(result, filePrefix)
+			if startIdx == -1 {
+				break
+			}
+			endIdx := strings.Index(result[startIdx:], fileSuffix)
+			if endIdx == -1 {
+				return nil, fmt.Errorf("unclosed file placeholder at position %d", startIdx)
+			}
+			endIdx += startIdx
+
+			// Extract file path
+			filePath := result[startIdx+len(filePrefix) : endIdx]
+			if filePath == "" {
+				return nil, fmt.Errorf("empty file path in placeholder at position %d", startIdx)
+			}
+
+			// Read file content
+			// #nosec G304 -- reading file for test payload generation
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
+			}
+
+			// Replace placeholder with file content
+			placeholder := result[startIdx : endIdx+len(fileSuffix)]
+			result = strings.Replace(result, placeholder, string(content), 1)
+		}
+	}
+
 	return []byte(result), nil
 }
 

@@ -1,6 +1,7 @@
 package toolutil
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
@@ -328,5 +329,343 @@ func TestConstants(t *testing.T) {
 	}
 	if CTText != "text/plain" {
 		t.Errorf("CTText = %v, want 'text/plain'", CTText)
+	}
+}
+
+func TestBuildPayloadWithDelimiters(t *testing.T) {
+	tests := []struct {
+		name        string
+		rawPayload  string
+		mime        string
+		openDelim   string
+		closeDelim  string
+		wantErr     bool
+		checkResult bool
+	}{
+		{
+			name:        "Custom delimiters with counter",
+			rawPayload:  "ID: [[counter]]",
+			mime:        CTText,
+			openDelim:   "[[",
+			closeDelim:  "]]",
+			wantErr:     false,
+			checkResult: true,
+		},
+		{
+			name:        "Percent delimiters",
+			rawPayload:  "Time: %nowtime%",
+			mime:        CTText,
+			openDelim:   "%",
+			closeDelim:  "%",
+			wantErr:     false,
+			checkResult: true,
+		},
+		{
+			name:        "Default delimiters",
+			rawPayload:  "{{sentence}}",
+			mime:        CTText,
+			openDelim:   "{{",
+			closeDelim:  "}}",
+			wantErr:     false,
+			checkResult: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, contentType, err := BuildPayloadWithDelimiters(tt.rawPayload, tt.mime, tt.openDelim, tt.closeDelim)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("BuildPayloadWithDelimiters() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.checkResult && len(body) == 0 {
+				t.Error("BuildPayloadWithDelimiters() returned empty body")
+			}
+			if contentType != tt.mime {
+				t.Errorf("BuildPayloadWithDelimiters() contentType = %v, want %v", contentType, tt.mime)
+			}
+		})
+	}
+}
+
+func TestParseHeaders(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers []string
+		want    map[string]string
+		wantErr bool
+		checkFn func(t *testing.T, got map[string]string) // Custom validation function
+	}{
+		{
+			name:    "Valid headers",
+			headers: []string{"Content-Type=application/json", "X-Custom-Header=value123"},
+			want:    map[string]string{"Content-Type": "application/json", "X-Custom-Header": "value123"},
+			wantErr: false,
+		},
+		{
+			name:    "Headers with spaces",
+			headers: []string{"Key = Value", " Another =  Test "},
+			want:    map[string]string{"Key": "Value", "Another": "Test"},
+			wantErr: false,
+		},
+		{
+			name:    "Empty header list",
+			headers: []string{},
+			want:    map[string]string{},
+			wantErr: false,
+		},
+		{
+			name:    "Invalid format - no equals",
+			headers: []string{"InvalidHeader"},
+			wantErr: true,
+		},
+		{
+			name:    "Invalid format - empty key",
+			headers: []string{"=value"},
+			wantErr: true,
+		},
+		{
+			name:    "Valid header with equals in value",
+			headers: []string{"Authorization=Bearer token=123"},
+			want:    map[string]string{"Authorization": "Bearer token=123"},
+			wantErr: false,
+		},
+		{
+			name:    "Mixed valid and invalid",
+			headers: []string{"Valid=true", "Invalid"},
+			wantErr: true,
+		},
+		{
+			name:    "Header with counter template",
+			headers: []string{"X-Request-ID={{counter}}"},
+			wantErr: false,
+			checkFn: func(t *testing.T, got map[string]string) {
+				val, exists := got["X-Request-ID"]
+				if !exists {
+					t.Error("X-Request-ID header not found")
+					return
+				}
+				if val == "" || val == "{{counter}}" {
+					t.Errorf("Counter template not interpolated, got: %s", val)
+				}
+			},
+		},
+		{
+			name:    "Header with nowtime template",
+			headers: []string{"X-Timestamp={{nowtime}}"},
+			wantErr: false,
+			checkFn: func(t *testing.T, got map[string]string) {
+				val, exists := got["X-Timestamp"]
+				if !exists {
+					t.Error("X-Timestamp header not found")
+					return
+				}
+				if val == "" || val == "{{nowtime}}" {
+					t.Errorf("Nowtime template not interpolated, got: %s", val)
+				}
+			},
+		},
+		{
+			name:    "Header with sentence template",
+			headers: []string{"X-Message={{sentence}}"},
+			wantErr: false,
+			checkFn: func(t *testing.T, got map[string]string) {
+				val, exists := got["X-Message"]
+				if !exists {
+					t.Error("X-Message header not found")
+					return
+				}
+				if val == "" || val == "{{sentence}}" {
+					t.Errorf("Sentence template not interpolated, got: %s", val)
+				}
+			},
+		},
+		{
+			name:    "Multiple headers with templates",
+			headers: []string{"X-ID={{counter}}", "X-Time={{nowtime}}", "X-Static=static-value"},
+			wantErr: false,
+			checkFn: func(t *testing.T, got map[string]string) {
+				if len(got) != 3 {
+					t.Errorf("Expected 3 headers, got %d", len(got))
+					return
+				}
+				if got["X-Static"] != "static-value" {
+					t.Errorf("X-Static = %s, want static-value", got["X-Static"])
+				}
+				if got["X-ID"] == "" || got["X-ID"] == "{{counter}}" {
+					t.Errorf("X-ID template not interpolated: %s", got["X-ID"])
+				}
+				if got["X-Time"] == "" || got["X-Time"] == "{{nowtime}}" {
+					t.Errorf("X-Time template not interpolated: %s", got["X-Time"])
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseHeaders(tt.headers)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseHeaders() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if tt.checkFn != nil {
+					tt.checkFn(t, got)
+				} else if tt.want != nil {
+					if len(got) != len(tt.want) {
+						t.Errorf("ParseHeaders() returned %d headers, want %d", len(got), len(tt.want))
+						return
+					}
+					for k, v := range tt.want {
+						if got[k] != v {
+							t.Errorf("ParseHeaders()[%q] = %q, want %q", k, got[k], v)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestAddHeadersFlag(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	var headers []string
+
+	AddHeadersFlag(cmd, &headers)
+
+	flag := cmd.Flags().Lookup("header")
+	if flag == nil {
+		t.Error("AddHeadersFlag() did not add 'header' flag")
+		return
+	}
+
+	// Check short flag
+	if flag.Shorthand != "H" {
+		t.Errorf("AddHeadersFlag() shorthand = %q, want 'H'", flag.Shorthand)
+	}
+}
+
+func TestAddTemplateDelimiterFlags(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	var openDelim, closeDelim string
+
+	AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
+
+	if cmd.Flags().Lookup("template-open") == nil {
+		t.Error("AddTemplateDelimiterFlags() did not add 'template-open' flag")
+	}
+	if cmd.Flags().Lookup("template-close") == nil {
+		t.Error("AddTemplateDelimiterFlags() did not add 'template-close' flag")
+	}
+}
+
+func TestParseHeadersWithDelimiters(t *testing.T) {
+	tests := []struct {
+		name       string
+		headers    []string
+		openDelim  string
+		closeDelim string
+		want       map[string]string
+		wantErr    bool
+		checkFn    func(t *testing.T, got map[string]string)
+	}{
+		{
+			name:       "Custom delimiters with counter",
+			headers:    []string{"X-ID=<<counter>>"},
+			openDelim:  "<<",
+			closeDelim: ">>",
+			wantErr:    false,
+			checkFn: func(t *testing.T, got map[string]string) {
+				val := got["X-ID"]
+				if val == "" || val == "<<counter>>" {
+					t.Errorf("Counter not interpolated with custom delimiters, got: %s", val)
+				}
+			},
+		},
+		{
+			name:       "Custom delimiters with nowtime",
+			headers:    []string{"X-Time=%%nowtime%%"},
+			openDelim:  "%%",
+			closeDelim: "%%",
+			wantErr:    false,
+			checkFn: func(t *testing.T, got map[string]string) {
+				val := got["X-Time"]
+				if val == "" || val == "%%nowtime%%" {
+					t.Errorf("Nowtime not interpolated with custom delimiters, got: %s", val)
+				}
+			},
+		},
+		{
+			name:       "Mixed static and template with custom delimiters",
+			headers:    []string{"X-Msg=prefix-<<counter>>-suffix"},
+			openDelim:  "<<",
+			closeDelim: ">>",
+			wantErr:    false,
+			checkFn: func(t *testing.T, got map[string]string) {
+				val := got["X-Msg"]
+				if !strings.HasPrefix(val, "prefix-") || !strings.HasSuffix(val, "-suffix") {
+					t.Errorf("Expected prefix-*-suffix pattern, got: %s", val)
+				}
+				if strings.Contains(val, "<<") || strings.Contains(val, ">>") {
+					t.Errorf("Delimiters not replaced, got: %s", val)
+				}
+			},
+		},
+		{
+			name:       "Default delimiters",
+			headers:    []string{"X-ID={{counter}}"},
+			openDelim:  "{{",
+			closeDelim: "}}",
+			wantErr:    false,
+			checkFn: func(t *testing.T, got map[string]string) {
+				val := got["X-ID"]
+				if val == "" || val == "{{counter}}" {
+					t.Errorf("Counter not interpolated, got: %s", val)
+				}
+			},
+		},
+		{
+			name:       "Invalid format with custom delimiters",
+			headers:    []string{"InvalidHeader"},
+			openDelim:  "<<",
+			closeDelim: ">>",
+			wantErr:    true,
+		},
+		{
+			name:       "Multiple headers with custom delimiters",
+			headers:    []string{"X-ID=<<counter>>", "X-Static=value", "X-Time=<<nowtime>>"},
+			openDelim:  "<<",
+			closeDelim: ">>",
+			wantErr:    false,
+			checkFn: func(t *testing.T, got map[string]string) {
+				if len(got) != 3 {
+					t.Errorf("Expected 3 headers, got %d", len(got))
+					return
+				}
+				if got["X-Static"] != "value" {
+					t.Errorf("X-Static = %s, want value", got["X-Static"])
+				}
+				if got["X-ID"] == "" || got["X-ID"] == "<<counter>>" {
+					t.Errorf("X-ID not interpolated: %s", got["X-ID"])
+				}
+				if got["X-Time"] == "" || got["X-Time"] == "<<nowtime>>" {
+					t.Errorf("X-Time not interpolated: %s", got["X-Time"])
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseHeadersWithDelimiters(tt.headers, tt.openDelim, tt.closeDelim)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseHeadersWithDelimiters() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && tt.checkFn != nil {
+				tt.checkFn(t, got)
+			}
+		})
 	}
 }

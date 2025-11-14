@@ -24,6 +24,9 @@ func sendCommand() *cobra.Command {
 		sendInterval string
 		sendProto    string
 		sendMIME     string
+		headers      []string
+		openDelim    string
+		closeDelim   string
 	)
 
 	cmd := &cobra.Command{
@@ -36,11 +39,17 @@ func sendCommand() *cobra.Command {
 			logger := toolutil.Logger()
 			logger.Info("Sending CoAP POST periodically", "proto", sendProto, "addr", sendAddress, "path", sendPath, "interval", sendInterval)
 
+			_, err := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
+			if err != nil {
+				return fmt.Errorf("invalid headers: %w", err)
+			}
+			// Note: CoAP headers would be mapped to options in the protocol implementation
+
 			sendOnce := func() {
 				var body []byte
 				var ct string
 
-				b, err := testpayload.Interpolate(sendPayload)
+				b, err := testpayload.InterpolateWithDelimiters(sendPayload, openDelim, closeDelim)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to interpolate payload: %v\n", err)
 					return
@@ -126,6 +135,8 @@ func sendCommand() *cobra.Command {
 	toolutil.AddPayloadFlags(cmd, &sendPayload, "{}", &sendMIME, toolutil.CTJSON)
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
 	cmd.Flags().StringVar(&sendProto, "proto", "udp", "CoAP transport protocol: udp or tcp")
+	toolutil.AddHeadersFlag(cmd, &headers)
+	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
 
 	return cmd
 }

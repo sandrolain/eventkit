@@ -12,12 +12,15 @@ import (
 
 func sendCommand() *cobra.Command {
 	var (
-		address  string
-		method   string
-		path     string
-		payload  string
-		interval string
-		mime     string
+		address    string
+		method     string
+		path       string
+		payload    string
+		interval   string
+		mime       string
+		headers    []string
+		openDelim  string
+		closeDelim string
 	)
 
 	cmd := &cobra.Command{
@@ -33,8 +36,13 @@ func sendCommand() *cobra.Command {
 			toolutil.PrintKeyValue("URL", url)
 			toolutil.PrintKeyValue("Interval", interval)
 
+			headerMap, err := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
+			if err != nil {
+				return fmt.Errorf("invalid headers: %w", err)
+			}
+
 			sendRequest := func() {
-				reqBody, contentType, err := toolutil.BuildPayload(payload, mime)
+				reqBody, contentType, err := toolutil.BuildPayloadWithDelimiters(payload, mime, openDelim, closeDelim)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					return
@@ -51,6 +59,9 @@ func sendCommand() *cobra.Command {
 				r.SetRequestURI(url)
 				if contentType != "" {
 					r.Header.Set("Content-Type", contentType)
+				}
+				for k, v := range headerMap {
+					r.Header.Set(k, v)
 				}
 				if len(reqBody) > 0 {
 					r.SetBody(reqBody)
@@ -77,6 +88,8 @@ func sendCommand() *cobra.Command {
 	toolutil.AddPathFlag(cmd, &path, "/event", "HTTP request path")
 	toolutil.AddPayloadFlags(cmd, &payload, "{}", &mime, toolutil.CTJSON)
 	toolutil.AddIntervalFlag(cmd, &interval, "5s")
+	toolutil.AddHeadersFlag(cmd, &headers)
+	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
 
 	return cmd
 }
