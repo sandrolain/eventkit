@@ -163,7 +163,15 @@ func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) 
 							return nil, fmt.Errorf("file %s outside allowed root %s", fp, FileRoot)
 						}
 					}
-					val, err = os.ReadFile(fp)
+					// Check cache
+					if c, ok := GetFileFromCache(fp); ok {
+						val = c
+					} else {
+						val, err = os.ReadFile(fp)
+						if err == nil {
+							PutFileIntoCache(fp, val)
+						}
+					}
 					if err != nil {
 						return nil, fmt.Errorf("failed to read file %s: %w", fp, err)
 					}
@@ -247,7 +255,17 @@ func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) 
 				}
 			}
 			// #nosec G304 -- reading file for test payload generation
-			content, err := os.ReadFile(filePath)
+			// Fetch from cache or read and put into cache
+			var content []byte
+			var err error
+			if c, ok := GetFileFromCache(filePath); ok {
+				content = c
+			} else {
+				content, err = os.ReadFile(filePath)
+				if err == nil {
+					PutFileIntoCache(filePath, content)
+				}
+			}
 			if err != nil {
 				return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
 			}
@@ -306,6 +324,52 @@ var FileRoot string = ""
 // SetFileRoot sets a root path that file placeholders must be under to be allowed.
 func SetFileRoot(root string) {
 	FileRoot = root
+}
+
+// File cache
+var fileCacheEnabled bool = false
+var fileCache = map[string][]byte{}
+var fileCacheMutex = sync.RWMutex{}
+
+// SetFileCacheEnabled toggles file content caching (process-lifetime cache).
+func SetFileCacheEnabled(v bool) {
+	fileCacheMutex.Lock()
+	defer fileCacheMutex.Unlock()
+	fileCacheEnabled = v
+	if v && fileCache == nil {
+		fileCache = map[string][]byte{}
+	}
+	if !v {
+		fileCache = map[string][]byte{}
+	}
+}
+
+// ClearFileCache clears the in-memory file cache.
+func ClearFileCache() {
+	fileCacheMutex.Lock()
+	defer fileCacheMutex.Unlock()
+	fileCache = map[string][]byte{}
+}
+
+// GetFileFromCache returns file content if present, else nil/false
+func GetFileFromCache(path string) ([]byte, bool) {
+	fileCacheMutex.RLock()
+	defer fileCacheMutex.RUnlock()
+	if !fileCacheEnabled {
+		return nil, false
+	}
+	v, ok := fileCache[path]
+	return v, ok
+}
+
+// PutFileIntoCache stores content in the cache if enabled
+func PutFileIntoCache(path string, content []byte) {
+	if !fileCacheEnabled {
+		return
+	}
+	fileCacheMutex.Lock()
+	fileCache[path] = content
+	fileCacheMutex.Unlock()
 }
 
 type TestPayloadType string

@@ -390,6 +390,65 @@ func TestInterpolateWithDelimiters_FileRootSandboxing(t *testing.T) {
 	}
 }
 
+func TestInterpolateWithDelimiters_FileCache(t *testing.T) {
+	// Create temp file
+	tmpDir := t.TempDir()
+	f := filepath.Join(tmpDir, "cachefile.txt")
+	if err := os.WriteFile(f, []byte("first"), 0644); err != nil {
+		t.Fatalf("failed to write initial file: %v", err)
+	}
+
+	// Enable file reads and caching
+	SetAllowFileReads(true)
+	defer SetAllowFileReads(false)
+	SetFileCacheEnabled(true)
+	defer SetFileCacheEnabled(false)
+
+	// First read should fetch initial content
+	res1, err := InterpolateWithDelimiters("{{file:"+f+"}}", "{{", "}}")
+	if err != nil {
+		t.Fatalf("interpolate failed: %v", err)
+	}
+	if string(res1) != "first" {
+		t.Fatalf("expected 'first', got: %s", string(res1))
+	}
+
+	// Modify file to second; cache should still return first
+	if err := os.WriteFile(f, []byte("second"), 0644); err != nil {
+		t.Fatalf("failed to update file: %v", err)
+	}
+	res2, err := InterpolateWithDelimiters("{{file:"+f+"}}", "{{", "}}")
+	if err != nil {
+		t.Fatalf("interpolate failed: %v", err)
+	}
+	if string(res2) != "first" {
+		t.Fatalf("expected 'first' due to cache, got: %s", string(res2))
+	}
+
+	// Clear cache, now reading should return updated content
+	ClearFileCache()
+	res3, err := InterpolateWithDelimiters("{{file:"+f+"}}", "{{", "}}")
+	if err != nil {
+		t.Fatalf("interpolate failed: %v", err)
+	}
+	if string(res3) != "second" {
+		t.Fatalf("expected 'second' after clearing cache, got: %s", string(res3))
+	}
+
+	// Turn off caching; update file again and it should be visible immediately
+	SetFileCacheEnabled(false)
+	if err := os.WriteFile(f, []byte("third"), 0644); err != nil {
+		t.Fatalf("failed to update file: %v", err)
+	}
+	res4, err := InterpolateWithDelimiters("{{file:"+f+"}}", "{{", "}}")
+	if err != nil {
+		t.Fatalf("interpolate failed: %v", err)
+	}
+	if string(res4) != "third" {
+		t.Fatalf("expected 'third' when cache disabled, got: %s", string(res4))
+	}
+}
+
 func TestTestPayloadType_IsValid(t *testing.T) {
 	tests := []struct {
 		payloadType TestPayloadType

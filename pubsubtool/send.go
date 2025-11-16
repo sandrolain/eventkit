@@ -22,6 +22,7 @@ func sendCommand() *cobra.Command {
 		allowFileReads bool
 		templateVars   []string
 		fileRoot       string
+		cacheFiles     bool
 		sendInterval   string
 	)
 
@@ -55,6 +56,8 @@ func sendCommand() *cobra.Command {
 				testpayload.SeedRandom(seed)
 			}
 			testpayload.SetAllowFileReads(allowFileReads)
+			// file cache
+			testpayload.SetFileCacheEnabled(cacheFiles)
 			testpayload.SetFileRoot(fileRoot)
 			varsMap, errVars := toolutil.ParseTemplateVars(templateVars)
 			if errVars != nil {
@@ -90,6 +93,7 @@ func sendCommand() *cobra.Command {
 	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 	toolutil.AddTemplateVarFlag(cmd, &templateVars)
 	toolutil.AddFileRootFlag(cmd, &fileRoot)
+	toolutil.AddFileCacheFlag(cmd, &cacheFiles)
 
 	return cmd
 }

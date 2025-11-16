@@ -266,10 +266,19 @@ func ParseTemplateVars(vars []string) (map[string]string, error) {
 	return res, nil
 }
 
+// AddFileCacheFlag adds a --cache-files flag for enabling file content caching.
+// AddFileCacheFlag adds a --cache-files flag for enabling file content caching.
+func AddFileCacheFlag(cmd *cobra.Command, cache *bool) {
+	cmd.Flags().BoolVar(cache, "cache-files", false, "Enable caching for file: placeholders (process-lifetime cache)")
+}
+
 // AddFileRootFlag adds a --file-root flag to restrict file: placeholder reads.
 func AddFileRootFlag(cmd *cobra.Command, root *string) {
 	cmd.Flags().StringVar(root, "file-root", "", "Optional root path to restrict file: placeholders to the subtree")
 }
+
+// AddFileCacheFlag adds a --cache-files flag for enabling file content caching.
+// (no-op - helper present above)
 
 // AddSeedFlag provides a CLI flag to configure a deterministic seed for test payload
 // generation to make output deterministic during tests or reproducible runs.

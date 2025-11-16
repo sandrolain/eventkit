@@ -23,6 +23,7 @@ func sendCommand() *cobra.Command {
 		allowFileReads bool
 		templateVars   []string
 		fileRoot       string
+		cacheFiles     bool
 		sendInterval   string
 		sendDataKey    string
 	)
@@ -57,6 +58,7 @@ func sendCommand() *cobra.Command {
 			}
 			testpayload.SetAllowFileReads(allowFileReads)
 			testpayload.SetFileRoot(fileRoot)
+			testpayload.SetFileCacheEnabled(cacheFiles)
 			varsMap, errVars := toolutil.ParseTemplateVars(templateVars)
 			if errVars != nil {
 				return fmt.Errorf("invalid template-var: %w", errVars)
@@ -99,6 +101,7 @@ func sendCommand() *cobra.Command {
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
 	toolutil.AddSeedFlag(cmd, &seed)
 	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
+	toolutil.AddFileCacheFlag(cmd, &cacheFiles)
 	toolutil.AddTemplateVarFlag(cmd, &templateVars)
 	toolutil.AddFileRootFlag(cmd, &fileRoot)
 

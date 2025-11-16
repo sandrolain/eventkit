@@ -29,6 +29,7 @@ func sendCommand() *cobra.Command {
 		closeDelim     string
 		seed           int64
 		allowFileReads bool
+		cacheFiles     bool
 	)
 
 	cmd := &cobra.Command{
@@ -45,6 +46,7 @@ func sendCommand() *cobra.Command {
 				testpayload.SeedRandom(seed)
 			}
 			testpayload.SetAllowFileReads(allowFileReads)
+			testpayload.SetFileCacheEnabled(cacheFiles)
 
 			_, err := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
 			if err != nil {
@@ -146,6 +148,7 @@ func sendCommand() *cobra.Command {
 	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
 	toolutil.AddSeedFlag(cmd, &seed)
 	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
+	toolutil.AddFileCacheFlag(cmd, &cacheFiles)
 
 	return cmd
 }
