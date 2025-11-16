@@ -5,21 +5,24 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/sandrolain/eventkit/pkg/common"
+	"github.com/sandrolain/eventkit/pkg/testpayload"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 )
 
 func sendCommand() *cobra.Command {
 	var (
-		sendAddr     string
-		sendSubject  string
-		sendPayload  string
-		sendMIME     string
-		sendInterval string
-		sendStream   string
-		headers      []string
-		openDelim    string
-		closeDelim   string
+		sendAddr       string
+		sendSubject    string
+		sendPayload    string
+		sendMIME       string
+		sendInterval   string
+		sendStream     string
+		headers        []string
+		openDelim      string
+		closeDelim     string
+		seed           int64
+		allowFileReads bool
 	)
 
 	cmd := &cobra.Command{
@@ -36,6 +39,10 @@ func sendCommand() *cobra.Command {
 			defer nc.Close()
 
 			var js nats.JetStreamContext
+			if seed != 0 {
+				testpayload.SeedRandom(seed)
+			}
+			testpayload.SetAllowFileReads(allowFileReads)
 			headerMap, err := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
 			if err != nil {
 				return fmt.Errorf("invalid headers: %w", err)
@@ -97,6 +104,8 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&sendStream, "stream", "", "JetStream stream name (if set, uses JetStream)")
 	toolutil.AddHeadersFlag(cmd, &headers)
 	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
+	toolutil.AddSeedFlag(cmd, &seed)
+	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 
 	return cmd
 }

@@ -203,6 +203,9 @@ func TestInterpolateWithDelimiters(t *testing.T) {
 }
 
 func TestInterpolateWithDelimiters_FilePlaceholder(t *testing.T) {
+	// Allow file reads for this test only
+	SetAllowFileReads(true)
+	defer SetAllowFileReads(false)
 	// Create a temporary file
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test.txt")
@@ -285,6 +288,9 @@ func TestInterpolateWithDelimiters_FilePlaceholder(t *testing.T) {
 }
 
 func TestInterpolateWithDelimiters_MultipleFiles(t *testing.T) {
+	// Allow file reads for this test only
+	SetAllowFileReads(true)
+	defer SetAllowFileReads(false)
 	// Create temporary files
 	tmpDir := t.TempDir()
 	file1 := filepath.Join(tmpDir, "file1.txt")

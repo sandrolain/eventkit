@@ -7,6 +7,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/sandrolain/eventkit/pkg/common"
+	"github.com/sandrolain/eventkit/pkg/testpayload"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 )
@@ -19,17 +20,19 @@ const (
 
 func sendCommand() *cobra.Command {
 	var (
-		sendBroker   string
-		sendTopic    string
-		sendPayload  string
-		sendMIME     string
-		sendInterval string
-		sendQoS      int
-		sendRetain   bool
-		sendClientID string
-		headers      []string
-		openDelim    string
-		closeDelim   string
+		sendBroker     string
+		sendTopic      string
+		sendPayload    string
+		sendMIME       string
+		sendInterval   string
+		sendQoS        int
+		sendRetain     bool
+		sendClientID   string
+		headers        []string
+		openDelim      string
+		closeDelim     string
+		seed           int64
+		allowFileReads bool
 	)
 
 	cmd := &cobra.Command{
@@ -58,6 +61,11 @@ func sendCommand() *cobra.Command {
 			toolutil.PrintKeyValue("Topic", sendTopic)
 			toolutil.PrintKeyValue("QoS", sendQoS)
 			toolutil.PrintKeyValue("Interval", sendInterval)
+
+			if seed != 0 {
+				testpayload.SeedRandom(seed)
+			}
+			testpayload.SetAllowFileReads(allowFileReads)
 
 			_, errHeaders := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
 			if errHeaders != nil {
@@ -94,6 +102,8 @@ func sendCommand() *cobra.Command {
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
 	toolutil.AddHeadersFlag(cmd, &headers)
 	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
+	toolutil.AddSeedFlag(cmd, &seed)
+	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 
 	return cmd
 }

@@ -7,19 +7,22 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/sandrolain/eventkit/pkg/testpayload"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 )
 
 func sendCommand() *cobra.Command {
 	var (
-		sendAddr     string
-		sendChannel  string
-		sendStream   string
-		sendPayload  string
-		sendMIME     string
-		sendInterval string
-		sendDataKey  string
+		sendAddr       string
+		sendChannel    string
+		sendStream     string
+		sendPayload    string
+		sendMIME       string
+		seed           int64
+		allowFileReads bool
+		sendInterval   string
+		sendDataKey    string
 	)
 
 	cmd := &cobra.Command{
@@ -47,6 +50,10 @@ func sendCommand() *cobra.Command {
 			}
 
 			logger := toolutil.Logger()
+			if seed != 0 {
+				testpayload.SeedRandom(seed)
+			}
+			testpayload.SetAllowFileReads(allowFileReads)
 			logger.Info("Sending to Redis", "address", sendAddr, "mode", mode, "interval", sendInterval)
 
 			for range ticker.C {
@@ -82,6 +89,8 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&sendDataKey, "dataKey", "data", "Field name holding data in stream messages")
 	toolutil.AddPayloadFlags(cmd, &sendPayload, "Hello, Redis!", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
+	toolutil.AddSeedFlag(cmd, &seed)
+	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 
 	return cmd
 }

@@ -13,21 +13,24 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/sandrolain/eventkit/pkg/common"
+	"github.com/sandrolain/eventkit/pkg/testpayload"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 )
 
 func sendCommand() *cobra.Command {
 	var (
-		remote        string
-		branch        string
-		interval      string
-		filename      string
-		payload       string
-		mime          string
-		commitMessage string
-		username      string
-		password      string
+		remote         string
+		branch         string
+		interval       string
+		filename       string
+		payload        string
+		mime           string
+		commitMessage  string
+		username       string
+		password       string
+		seed           int64
+		allowFileReads bool
 	)
 
 	cmd := &cobra.Command{
@@ -40,6 +43,10 @@ func sendCommand() *cobra.Command {
 			if _, err := time.ParseDuration(interval); err != nil {
 				return fmt.Errorf("invalid interval: %w", err)
 			}
+			if seed != 0 {
+				testpayload.SeedRandom(seed)
+			}
+			testpayload.SetAllowFileReads(allowFileReads)
 			return runGitSend(remote, branch, interval, filename, payload, mime, commitMessage, username, password)
 		},
 	}
@@ -52,6 +59,8 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&commitMessage, "message", "Automated commit", "Commit message")
 	cmd.Flags().StringVar(&username, "username", "", "Username for remote repository (optional)")
 	cmd.Flags().StringVar(&password, "password", "", "Password or token for remote repository (optional)")
+	toolutil.AddSeedFlag(cmd, &seed)
+	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 
 	return cmd
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sandrolain/eventkit/pkg/common"
+	"github.com/sandrolain/eventkit/pkg/testpayload"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 	"go.mongodb.org/mongo-driver/bson"
@@ -15,12 +16,14 @@ import (
 
 func sendCommand() *cobra.Command {
 	var (
-		uri        string
-		database   string
-		collection string
-		payload    string
-		mime       string
-		interval   string
+		uri            string
+		database       string
+		collection     string
+		payload        string
+		mime           string
+		interval       string
+		seed           int64
+		allowFileReads bool
 	)
 
 	cmd := &cobra.Command{
@@ -54,6 +57,10 @@ func sendCommand() *cobra.Command {
 			toolutil.PrintKeyValue("Database", database)
 			toolutil.PrintKeyValue("Collection", collection)
 			toolutil.PrintKeyValue("Interval", interval)
+			if seed != 0 {
+				testpayload.SeedRandom(seed)
+			}
+			testpayload.SetAllowFileReads(allowFileReads)
 
 			insert := func() error {
 				body, _, err := toolutil.BuildPayload(payload, mime)
@@ -94,6 +101,8 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&collection, "collection", "events", "Collection name")
 	toolutil.AddPayloadFlags(cmd, &payload, `{"message":"{sentence}","timestamp":"{nowtime}"}`, &mime, toolutil.CTJSON)
 	toolutil.AddIntervalFlag(cmd, &interval, "5s")
+	toolutil.AddSeedFlag(cmd, &seed)
+	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 
 	return cmd
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/sandrolain/eventkit/pkg/common"
+	"github.com/sandrolain/eventkit/pkg/testpayload"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 	"github.com/valyala/fasthttp"
@@ -12,15 +13,17 @@ import (
 
 func sendCommand() *cobra.Command {
 	var (
-		address    string
-		method     string
-		path       string
-		payload    string
-		interval   string
-		mime       string
-		headers    []string
-		openDelim  string
-		closeDelim string
+		address        string
+		method         string
+		path           string
+		payload        string
+		interval       string
+		mime           string
+		headers        []string
+		openDelim      string
+		closeDelim     string
+		seed           int64
+		allowFileReads bool
 	)
 
 	cmd := &cobra.Command{
@@ -35,6 +38,11 @@ func sendCommand() *cobra.Command {
 			toolutil.PrintKeyValue("Method", method)
 			toolutil.PrintKeyValue("URL", url)
 			toolutil.PrintKeyValue("Interval", interval)
+
+			if seed != 0 {
+				testpayload.SeedRandom(seed)
+			}
+			testpayload.SetAllowFileReads(allowFileReads)
 
 			headerMap, err := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
 			if err != nil {
@@ -90,6 +98,8 @@ func sendCommand() *cobra.Command {
 	toolutil.AddIntervalFlag(cmd, &interval, "5s")
 	toolutil.AddHeadersFlag(cmd, &headers)
 	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
+	toolutil.AddSeedFlag(cmd, &seed)
+	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 
 	return cmd
 }

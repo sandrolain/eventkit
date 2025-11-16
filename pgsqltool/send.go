@@ -7,17 +7,20 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/sandrolain/eventkit/pkg/common"
+	"github.com/sandrolain/eventkit/pkg/testpayload"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 )
 
 func sendCommand() *cobra.Command {
 	var (
-		connStr  string
-		channel  string
-		interval string
-		payload  string
-		mime     string
+		connStr        string
+		channel        string
+		interval       string
+		payload        string
+		mime           string
+		seed           int64
+		allowFileReads bool
 	)
 
 	cmd := &cobra.Command{
@@ -38,6 +41,10 @@ func sendCommand() *cobra.Command {
 			}()
 
 			logger := toolutil.Logger()
+			if seed != 0 {
+				testpayload.SeedRandom(seed)
+			}
+			testpayload.SetAllowFileReads(allowFileReads)
 			logger.Info("Sending NOTIFY to PostgreSQL", "channel", channel, "interval", interval)
 
 			return common.StartPeriodicTask(ctx, interval, func() error {
@@ -65,6 +72,8 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&channel, "channel", "test_channel", "NOTIFY channel name")
 	toolutil.AddPayloadFlags(cmd, &payload, "{nowtime}", &mime, toolutil.CTText)
 	toolutil.AddIntervalFlag(cmd, &interval, "5s")
+	toolutil.AddSeedFlag(cmd, &seed)
+	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 
 	return cmd
 }

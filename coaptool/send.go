@@ -18,15 +18,17 @@ import (
 
 func sendCommand() *cobra.Command {
 	var (
-		sendAddress  string
-		sendPath     string
-		sendPayload  string
-		sendInterval string
-		sendProto    string
-		sendMIME     string
-		headers      []string
-		openDelim    string
-		closeDelim   string
+		sendAddress    string
+		sendPath       string
+		sendPayload    string
+		sendInterval   string
+		sendProto      string
+		sendMIME       string
+		headers        []string
+		openDelim      string
+		closeDelim     string
+		seed           int64
+		allowFileReads bool
 	)
 
 	cmd := &cobra.Command{
@@ -38,6 +40,11 @@ func sendCommand() *cobra.Command {
 
 			logger := toolutil.Logger()
 			logger.Info("Sending CoAP POST periodically", "proto", sendProto, "addr", sendAddress, "path", sendPath, "interval", sendInterval)
+
+			if seed != 0 {
+				testpayload.SeedRandom(seed)
+			}
+			testpayload.SetAllowFileReads(allowFileReads)
 
 			_, err := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
 			if err != nil {
@@ -137,6 +144,8 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&sendProto, "proto", "udp", "CoAP transport protocol: udp or tcp")
 	toolutil.AddHeadersFlag(cmd, &headers)
 	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
+	toolutil.AddSeedFlag(cmd, &seed)
+	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 
 	return cmd
 }

@@ -7,17 +7,20 @@ import (
 	"time"
 
 	pubsub "cloud.google.com/go/pubsub/v2"
+	"github.com/sandrolain/eventkit/pkg/testpayload"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
 )
 
 func sendCommand() *cobra.Command {
 	var (
-		sendProject  string
-		sendTopic    string
-		sendPayload  string
-		sendMIME     string
-		sendInterval string
+		sendProject    string
+		sendTopic      string
+		sendPayload    string
+		sendMIME       string
+		seed           int64
+		allowFileReads bool
+		sendInterval   string
 	)
 
 	cmd := &cobra.Command{
@@ -46,6 +49,10 @@ func sendCommand() *cobra.Command {
 			defer ticker.Stop()
 
 			logger := toolutil.Logger()
+			if seed != 0 {
+				testpayload.SeedRandom(seed)
+			}
+			testpayload.SetAllowFileReads(allowFileReads)
 			logger.Info("Publishing to Pub/Sub", "project", sendProject, "topic", sendTopic, "interval", sendInterval)
 
 			for range ticker.C {
@@ -71,6 +78,8 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&sendTopic, "topic", "test-topic", "Pub/Sub topic ID")
 	toolutil.AddPayloadFlags(cmd, &sendPayload, "Hello, PubSub!", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
+	toolutil.AddSeedFlag(cmd, &seed)
+	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 
 	return cmd
 }

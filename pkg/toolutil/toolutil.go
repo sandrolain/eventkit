@@ -1,6 +1,7 @@
 package toolutil
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/TylerBrock/colorjson"
 	"github.com/fatih/color"
@@ -124,6 +126,10 @@ func BuildPayloadWithDelimiters(rawPayload string, mime string, openDelim string
 	b, err := testpayload.InterpolateWithDelimiters(rawPayload, openDelim, closeDelim)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to interpolate payload: %w", err)
+	}
+	// If the caller didn't pass a MIME type (empty string), try to guess.
+	if mime == "" {
+		mime = GuessMIME(b)
 	}
 	return b, mime, nil
 }
@@ -242,6 +248,19 @@ func AddTemplateDelimiterFlags(cmd *cobra.Command, openDelim *string, closeDelim
 	cmd.Flags().StringVar(closeDelim, "template-close", "}}", "Template variable closing delimiter")
 }
 
+// AddSeedFlag provides a CLI flag to configure a deterministic seed for test payload
+// generation to make output deterministic during tests or reproducible runs.
+func AddSeedFlag(cmd *cobra.Command, seed *int64) {
+	cmd.Flags().Int64Var(seed, "seed", 0, "Optional deterministic seed for test data generation")
+}
+
+// AddAllowFileReadsFlag provides a CLI flag to allow using {{file:...}} placeholders.
+// Disabled by default for safety; the CLI flag should be used with care in untrusted
+// environments.
+func AddAllowFileReadsFlag(cmd *cobra.Command, allow *bool) {
+	cmd.Flags().BoolVar(allow, "allow-file-reads", false, "Allow reading files with {{file:...}} placeholder (default false)")
+}
+
 // ParseHeaders parses a slice of "key=value" strings into a map.
 // Returns an error if any header is malformed.
 // Uses default template delimiters "{{" and "}}".
@@ -270,7 +289,12 @@ func ParseHeadersWithDelimiters(headers []string, openDelim string, closeDelim s
 			return nil, fmt.Errorf("failed to interpolate header value for '%s': %w", key, err)
 		}
 
-		result[key] = string(interpolatedValue)
+		// If header value contains non-UTF8 or binary data, base64 encode it.
+		if !utf8.Valid(interpolatedValue) {
+			result[key] = base64.StdEncoding.EncodeToString(interpolatedValue)
+		} else {
+			result[key] = string(interpolatedValue)
+		}
 	}
 	return result, nil
 }

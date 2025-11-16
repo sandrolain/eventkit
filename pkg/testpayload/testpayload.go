@@ -140,6 +140,10 @@ func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) 
 			}
 
 			// Read file content
+			// File reads may be disabled by default for security in CI.
+			if !AllowFileReads {
+				return nil, fmt.Errorf("file reads are disabled: to enable allow file reads set testpayload.SetAllowFileReads(true)")
+			}
 			// #nosec G304 -- reading file for test payload generation
 			content, err := os.ReadFile(filePath)
 			if err != nil {
@@ -153,6 +157,21 @@ func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) 
 	}
 
 	return []byte(result), nil
+}
+
+// AllowFileReads controls whether {{file:...}} placeholders are permitted.
+// Disabled by default for safety; set via testpayload.SetAllowFileReads(true) or CLI flag.
+var AllowFileReads bool = false
+
+// SetAllowFileReads toggles file reading support for the test payload generator.
+func SetAllowFileReads(v bool) {
+	AllowFileReads = v
+}
+
+// SeedRandom seeds the global pseudo-random generator used by testpayload helpers.
+// Useful to make generation deterministic for tests and reproducible scenarios.
+func SeedRandom(seed int64) {
+	rand.Seed(seed)
 }
 
 type TestPayloadType string

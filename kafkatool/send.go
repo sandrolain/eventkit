@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sandrolain/eventkit/pkg/testpayload"
 	"github.com/segmentio/kafka-go"
 	"github.com/spf13/cobra"
 
@@ -15,14 +16,16 @@ import (
 
 func sendCommand() *cobra.Command {
 	var (
-		sendBrokers  string
-		sendTopic    string
-		sendPayload  string
-		sendMIME     string
-		sendInterval string
-		headers      []string
-		openDelim    string
-		closeDelim   string
+		sendBrokers    string
+		sendTopic      string
+		sendPayload    string
+		sendMIME       string
+		sendInterval   string
+		headers        []string
+		openDelim      string
+		closeDelim     string
+		seed           int64
+		allowFileReads bool
 	)
 
 	cmd := &cobra.Command{
@@ -47,6 +50,10 @@ func sendCommand() *cobra.Command {
 			ticker := time.NewTicker(dur)
 			defer ticker.Stop()
 
+			if seed != 0 {
+				testpayload.SeedRandom(seed)
+			}
+			testpayload.SetAllowFileReads(allowFileReads)
 			headerMap, err := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
 			if err != nil {
 				return fmt.Errorf("invalid headers: %w", err)
@@ -85,6 +92,8 @@ func sendCommand() *cobra.Command {
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
 	toolutil.AddHeadersFlag(cmd, &headers)
 	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
+	toolutil.AddSeedFlag(cmd, &seed)
+	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 
 	return cmd
 }

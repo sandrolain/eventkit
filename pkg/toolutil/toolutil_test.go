@@ -1,6 +1,7 @@
 package toolutil
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 
@@ -388,6 +389,19 @@ func TestBuildPayloadWithDelimiters(t *testing.T) {
 	}
 }
 
+func TestBuildPayload_MimeAutoDetect(t *testing.T) {
+	body, contentType, err := BuildPayloadWithDelimiters("{{json}}", "", "{{", "}}")
+	if err != nil {
+		t.Fatalf("BuildPayloadWithDelimiters() error = %v", err)
+	}
+	if contentType != CTJSON {
+		t.Errorf("Expected contentType %s, got %s", CTJSON, contentType)
+	}
+	if len(body) == 0 {
+		t.Errorf("Expected non-empty body")
+	}
+}
+
 func TestParseHeaders(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -560,6 +574,21 @@ func TestAddTemplateDelimiterFlags(t *testing.T) {
 	}
 }
 
+func TestAddSeedFlagAndAllowFileReadsFlag(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	var seed int64
+	var allowFileReads bool
+	AddSeedFlag(cmd, &seed)
+	AddAllowFileReadsFlag(cmd, &allowFileReads)
+
+	if cmd.Flags().Lookup("seed") == nil {
+		t.Error("AddSeedFlag() did not add 'seed' flag")
+	}
+	if cmd.Flags().Lookup("allow-file-reads") == nil {
+		t.Error("AddAllowFileReadsFlag() did not add 'allow-file-reads' flag")
+	}
+}
+
 func TestParseHeadersWithDelimiters(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -651,6 +680,30 @@ func TestParseHeadersWithDelimiters(t *testing.T) {
 				}
 				if got["X-Time"] == "" || got["X-Time"] == "<<nowtime>>" {
 					t.Errorf("X-Time not interpolated: %s", got["X-Time"])
+				}
+			},
+		},
+		{
+			name:       "Binary header with CBOR placeholder gets base64 encoded",
+			headers:    []string{"X-Bin={{cbor}}"},
+			openDelim:  "{{",
+			closeDelim: "}}",
+			wantErr:    false,
+			checkFn: func(t *testing.T, got map[string]string) {
+				val, exists := got["X-Bin"]
+				if !exists {
+					t.Error("X-Bin header not found")
+					return
+				}
+				// Should be base64 string, decodeable into CBOR
+				decoded, err := base64.StdEncoding.DecodeString(val)
+				if err != nil {
+					t.Errorf("X-Bin not base64 encoded: %v", err)
+					return
+				}
+				var obj map[string]interface{}
+				if err := cbor.Unmarshal(decoded, &obj); err != nil {
+					t.Errorf("Decoded CBOR invalid: %v", err)
 				}
 			},
 		},
