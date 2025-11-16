@@ -20,6 +20,8 @@ func sendCommand() *cobra.Command {
 		sendMIME       string
 		seed           int64
 		allowFileReads bool
+		templateVars   []string
+		fileRoot       string
 		sendInterval   string
 	)
 
@@ -53,6 +55,12 @@ func sendCommand() *cobra.Command {
 				testpayload.SeedRandom(seed)
 			}
 			testpayload.SetAllowFileReads(allowFileReads)
+			testpayload.SetFileRoot(fileRoot)
+			varsMap, errVars := toolutil.ParseTemplateVars(templateVars)
+			if errVars != nil {
+				return fmt.Errorf("invalid template-var: %w", errVars)
+			}
+			testpayload.SetTemplateVars(varsMap)
 			logger.Info("Publishing to Pub/Sub", "project", sendProject, "topic", sendTopic, "interval", sendInterval)
 
 			for range ticker.C {
@@ -80,6 +88,8 @@ func sendCommand() *cobra.Command {
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
 	toolutil.AddSeedFlag(cmd, &seed)
 	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
+	toolutil.AddTemplateVarFlag(cmd, &templateVars)
+	toolutil.AddFileRootFlag(cmd, &fileRoot)
 
 	return cmd
 }

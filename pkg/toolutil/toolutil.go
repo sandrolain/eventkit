@@ -248,6 +248,29 @@ func AddTemplateDelimiterFlags(cmd *cobra.Command, openDelim *string, closeDelim
 	cmd.Flags().StringVar(closeDelim, "template-close", "}}", "Template variable closing delimiter")
 }
 
+// AddTemplateVarFlag adds a repeatable --template-var name=value flag
+func AddTemplateVarFlag(cmd *cobra.Command, vars *[]string) {
+	cmd.Flags().StringArrayVar(vars, "template-var", []string{}, "Template variable in name=value format. Can be repeated.")
+}
+
+// ParseTemplateVars converts a slice of "name=value" into a map.
+func ParseTemplateVars(vars []string) (map[string]string, error) {
+	res := map[string]string{}
+	for _, v := range vars {
+		parts := strings.SplitN(v, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid template var '%s', expected name=value", v)
+		}
+		res[strings.TrimSpace(parts[0])] = parts[1]
+	}
+	return res, nil
+}
+
+// AddFileRootFlag adds a --file-root flag to restrict file: placeholder reads.
+func AddFileRootFlag(cmd *cobra.Command, root *string) {
+	cmd.Flags().StringVar(root, "file-root", "", "Optional root path to restrict file: placeholders to the subtree")
+}
+
 // AddSeedFlag provides a CLI flag to configure a deterministic seed for test payload
 // generation to make output deterministic during tests or reproducible runs.
 func AddSeedFlag(cmd *cobra.Command, seed *int64) {

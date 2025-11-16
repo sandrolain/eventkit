@@ -31,6 +31,8 @@ func sendCommand() *cobra.Command {
 		password       string
 		seed           int64
 		allowFileReads bool
+		templateVars   []string
+		fileRoot       string
 	)
 
 	cmd := &cobra.Command{
@@ -47,6 +49,12 @@ func sendCommand() *cobra.Command {
 				testpayload.SeedRandom(seed)
 			}
 			testpayload.SetAllowFileReads(allowFileReads)
+			testpayload.SetFileRoot(fileRoot)
+			varsMap, errVars := toolutil.ParseTemplateVars(templateVars)
+			if errVars != nil {
+				return fmt.Errorf("invalid template-var: %w", errVars)
+			}
+			testpayload.SetTemplateVars(varsMap)
 			return runGitSend(remote, branch, interval, filename, payload, mime, commitMessage, username, password)
 		},
 	}
@@ -61,6 +69,8 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&password, "password", "", "Password or token for remote repository (optional)")
 	toolutil.AddSeedFlag(cmd, &seed)
 	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
+	toolutil.AddTemplateVarFlag(cmd, &templateVars)
+	toolutil.AddFileRootFlag(cmd, &fileRoot)
 
 	return cmd
 }

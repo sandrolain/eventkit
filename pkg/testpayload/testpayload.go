@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -101,6 +102,97 @@ func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) 
 	}
 
 	result := str
+	// Handle `var:` placeholders first (variable substitution)
+	varPrefix := openDelim + "var:"
+	if strings.Contains(result, varPrefix) {
+		for key := range templateVars {
+			ph := openDelim + "var:" + key + closeDelim
+			if strings.Contains(result, ph) {
+				result = strings.ReplaceAll(result, ph, templateVars[key])
+			}
+		}
+		// Replace any var: placeholders not found in map with empty string
+		for {
+			startIdx := strings.Index(result, varPrefix)
+			if startIdx == -1 {
+				break
+			}
+			endIdx := strings.Index(result[startIdx:], closeDelim)
+			if endIdx == -1 {
+				break
+			}
+			endIdx += startIdx
+			placeholder := result[startIdx : endIdx+len(closeDelim)]
+			result = strings.Replace(result, placeholder, "", 1)
+		}
+	}
+	// Process `raw:` and `str:` wrappers, these wrap inner placeholders or file: expressions
+	wrappers := []string{"raw:", "str:"}
+	for _, w := range wrappers {
+		prefix := openDelim + w
+		if strings.Contains(result, prefix) {
+			for {
+				startIdx := strings.Index(result, prefix)
+				if startIdx == -1 {
+					break
+				}
+				endIdx := strings.Index(result[startIdx:], closeDelim)
+				if endIdx == -1 {
+					return nil, fmt.Errorf("unclosed placeholder at position %d", startIdx)
+				}
+				endIdx += startIdx
+				inner := result[startIdx+len(prefix) : endIdx]
+				var val []byte
+				var err error
+				if strings.HasPrefix(inner, "file:") {
+					// file read
+					fp := inner[len("file:"):]
+					if fp == "" {
+						return nil, fmt.Errorf("empty file path in placeholder at position %d", startIdx)
+					}
+					if !AllowFileReads {
+						return nil, fmt.Errorf("file reads are disabled: to enable allow file reads set testpayload.SetAllowFileReads(true)")
+					}
+					if FileRoot != "" {
+						absRoot, _ := filepath.Abs(FileRoot)
+						absPath, err2 := filepath.Abs(fp)
+						if err2 != nil {
+							return nil, fmt.Errorf("invalid file path: %s", fp)
+						}
+						if !strings.HasPrefix(absPath, absRoot) {
+							return nil, fmt.Errorf("file %s outside allowed root %s", fp, FileRoot)
+						}
+					}
+					val, err = os.ReadFile(fp)
+					if err != nil {
+						return nil, fmt.Errorf("failed to read file %s: %w", fp, err)
+					}
+				} else if strings.HasPrefix(inner, "var:") {
+					key := inner[len("var:"):]
+					val = []byte(templateVars[key])
+				} else if t, ok := placeholders[inner]; ok {
+					val, err = t.Generate()
+					if err != nil {
+						return nil, err
+					}
+				} else {
+					// Unknown inner expression, treat as raw text
+					val = []byte(inner)
+				}
+				// For str: wrapper, JSON-escape the value (including quotes)
+				if w == "str:" {
+					esc, err := json.Marshal(string(val))
+					if err != nil {
+						return nil, fmt.Errorf("failed to escape value: %w", err)
+					}
+					val = esc
+				}
+				placeholder := result[startIdx : endIdx+len(closeDelim)]
+				result = strings.Replace(result, placeholder, string(val), 1)
+			}
+		}
+	}
+
 	for key, typ := range placeholders {
 		ph := openDelim + key + closeDelim
 
@@ -118,7 +210,7 @@ func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) 
 		}
 	}
 
-	// Handle file:// placeholder
+	// Handle file:// placeholder (non-wrapped form)
 	filePrefix := openDelim + "file:"
 	fileSuffix := closeDelim
 	if strings.Contains(result, filePrefix) {
@@ -143,6 +235,16 @@ func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) 
 			// File reads may be disabled by default for security in CI.
 			if !AllowFileReads {
 				return nil, fmt.Errorf("file reads are disabled: to enable allow file reads set testpayload.SetAllowFileReads(true)")
+			}
+			if FileRoot != "" {
+				absRoot, _ := filepath.Abs(FileRoot)
+				absPath, err2 := filepath.Abs(filePath)
+				if err2 != nil {
+					return nil, fmt.Errorf("invalid file path: %s", filePath)
+				}
+				if !strings.HasPrefix(absPath, absRoot) {
+					return nil, fmt.Errorf("file %s outside allowed root %s", filePath, FileRoot)
+				}
 			}
 			// #nosec G304 -- reading file for test payload generation
 			content, err := os.ReadFile(filePath)
@@ -172,6 +274,38 @@ func SetAllowFileReads(v bool) {
 // Useful to make generation deterministic for tests and reproducible scenarios.
 func SeedRandom(seed int64) {
 	rand.Seed(seed)
+}
+
+// Template variables for substitution using {{var:name}} placeholders
+var templateVars = map[string]string{}
+
+// SetTemplateVars replaces the full variables map used by InterpolateWithDelimiters.
+func SetTemplateVars(vars map[string]string) {
+	templateVars = map[string]string{}
+	for k, v := range vars {
+		templateVars[k] = v
+	}
+}
+
+// AddTemplateVar adds a single template variable.
+func AddTemplateVar(name, val string) {
+	if templateVars == nil {
+		templateVars = map[string]string{}
+	}
+	templateVars[name] = val
+}
+
+// ClearTemplateVars clears all configured template variables.
+func ClearTemplateVars() {
+	templateVars = map[string]string{}
+}
+
+// FileRoot is the optional root path for allowed file reads; empty means no root restriction.
+var FileRoot string = ""
+
+// SetFileRoot sets a root path that file placeholders must be under to be allowed.
+func SetFileRoot(root string) {
+	FileRoot = root
 }
 
 type TestPayloadType string

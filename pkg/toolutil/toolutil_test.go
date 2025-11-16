@@ -589,6 +589,26 @@ func TestAddSeedFlagAndAllowFileReadsFlag(t *testing.T) {
 	}
 }
 
+func TestParseTemplateVars(t *testing.T) {
+	vars := []string{"a=1", "b=two", "c = three"}
+	got, err := ParseTemplateVars(vars)
+	if err != nil {
+		t.Fatalf("ParseTemplateVars() error = %v", err)
+	}
+	if got["a"] != "1" || got["b"] != "two" || got["c"] != " three" {
+		t.Errorf("ParseTemplateVars() = %v", got)
+	}
+}
+
+func TestAddFileRootFlag(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	var root string
+	AddFileRootFlag(cmd, &root)
+	if cmd.Flags().Lookup("file-root") == nil {
+		t.Error("AddFileRootFlag() did not add 'file-root' flag")
+	}
+}
+
 func TestParseHeadersWithDelimiters(t *testing.T) {
 	tests := []struct {
 		name       string

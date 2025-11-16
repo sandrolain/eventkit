@@ -319,6 +319,77 @@ func TestInterpolateWithDelimiters_MultipleFiles(t *testing.T) {
 	}
 }
 
+func TestInterpolateWithDelimiters_VarPlaceholder(t *testing.T) {
+	ClearTemplateVars()
+	SetTemplateVars(map[string]string{"env": "prod", "name": "john"})
+	res, err := InterpolateWithDelimiters("Service: {{var:env}}, User: {{var:name}}", "{{", "}}")
+	if err != nil {
+		t.Fatalf("InterpolateWithDelimiters() error = %v", err)
+	}
+	if !strings.Contains(string(res), "Service: prod") || !strings.Contains(string(res), "User: john") {
+		t.Fatalf("InterpolateWithDelimiters var substitution failed: %s", string(res))
+	}
+}
+
+func TestInterpolateWithDelimiters_RawAndStrWrappers(t *testing.T) {
+	// str: should produce a JSON-escaped string (including quotes)
+	resStr, err := InterpolateWithDelimiters("Message: {{str:sentence}}", "{{", "}}")
+	if err != nil {
+		t.Fatalf("InterpolateWithDelimiters() error = %v", err)
+	}
+	if !strings.Contains(string(resStr), "\"") { // expect quotes due to json.Marshal
+		t.Fatalf("Expected quoted string in result for str:, got: %s", string(resStr))
+	}
+
+	// raw:json should insert raw JSON object; wrap in an outer JSON object and verify it's valid JSON
+	resRaw, err := InterpolateWithDelimiters("{ \"payload\": {{raw:json}} }", "{{", "}}")
+	if err != nil {
+		t.Fatalf("InterpolateWithDelimiters() error = %v", err)
+	}
+	var obj map[string]interface{}
+	if err := json.Unmarshal(resRaw, &obj); err != nil {
+		t.Fatalf("raw:json was not inserted as raw JSON: %v (res: %s)", err, string(resRaw))
+	}
+}
+
+func TestInterpolateWithDelimiters_FileRootSandboxing(t *testing.T) {
+	// Create two directories: tmpRoot and tmpOutside
+	tmpRoot := t.TempDir()
+	// Create another temp dir outside the root by making child of system temp; we'll create separate one
+	tmpOutside := t.TempDir()
+
+	// Create files
+	fileInside := filepath.Join(tmpRoot, "inside.txt")
+	fileOutside := filepath.Join(tmpOutside, "outside.txt")
+	if err := os.WriteFile(fileInside, []byte("inside"), 0644); err != nil {
+		t.Fatalf("failed to write inside file: %v", err)
+	}
+	if err := os.WriteFile(fileOutside, []byte("outside"), 0644); err != nil {
+		t.Fatalf("failed to write outside file: %v", err)
+	}
+
+	// Enable file reads and set root
+	SetAllowFileReads(true)
+	defer SetAllowFileReads(false)
+	SetFileRoot(tmpRoot)
+	defer SetFileRoot("")
+
+	// Inside should work
+	res, err := InterpolateWithDelimiters("{{file:"+fileInside+"}}", "{{", "}}")
+	if err != nil {
+		t.Fatalf("interpolate failed for allowed file: %v", err)
+	}
+	if string(res) != "inside" {
+		t.Fatalf("expected inside content, got: %s", string(res))
+	}
+
+	// Outside should fail
+	_, err = InterpolateWithDelimiters("{{file:"+fileOutside+"}}", "{{", "}}")
+	if err == nil {
+		t.Fatalf("expected error when reading file outside file-root, got nil")
+	}
+}
+
 func TestTestPayloadType_IsValid(t *testing.T) {
 	tests := []struct {
 		payloadType TestPayloadType

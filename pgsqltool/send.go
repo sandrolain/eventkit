@@ -21,6 +21,8 @@ func sendCommand() *cobra.Command {
 		mime           string
 		seed           int64
 		allowFileReads bool
+		templateVars   []string
+		fileRoot       string
 	)
 
 	cmd := &cobra.Command{
@@ -45,6 +47,13 @@ func sendCommand() *cobra.Command {
 				testpayload.SeedRandom(seed)
 			}
 			testpayload.SetAllowFileReads(allowFileReads)
+			testpayload.SetFileRoot(fileRoot)
+			varsMap, errVars := toolutil.ParseTemplateVars(templateVars)
+			if errVars != nil {
+				return fmt.Errorf("invalid template-var: %w", errVars)
+			}
+			testpayload.SetTemplateVars(varsMap)
+
 			logger.Info("Sending NOTIFY to PostgreSQL", "channel", channel, "interval", interval)
 
 			return common.StartPeriodicTask(ctx, interval, func() error {
@@ -74,6 +83,8 @@ func sendCommand() *cobra.Command {
 	toolutil.AddIntervalFlag(cmd, &interval, "5s")
 	toolutil.AddSeedFlag(cmd, &seed)
 	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
+	toolutil.AddTemplateVarFlag(cmd, &templateVars)
+	toolutil.AddFileRootFlag(cmd, &fileRoot)
 
 	return cmd
 }

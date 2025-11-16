@@ -24,6 +24,8 @@ func sendCommand() *cobra.Command {
 		closeDelim     string
 		seed           int64
 		allowFileReads bool
+		templateVars   []string
+		fileRoot       string
 	)
 
 	cmd := &cobra.Command{
@@ -43,6 +45,13 @@ func sendCommand() *cobra.Command {
 				testpayload.SeedRandom(seed)
 			}
 			testpayload.SetAllowFileReads(allowFileReads)
+			testpayload.SetFileRoot(fileRoot)
+			// parse template vars
+			varsMap, errVars := toolutil.ParseTemplateVars(templateVars)
+			if errVars != nil {
+				return fmt.Errorf("invalid template-var: %w", errVars)
+			}
+			testpayload.SetTemplateVars(varsMap)
 
 			headerMap, err := toolutil.ParseHeadersWithDelimiters(headers, openDelim, closeDelim)
 			if err != nil {
@@ -100,6 +109,8 @@ func sendCommand() *cobra.Command {
 	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
 	toolutil.AddSeedFlag(cmd, &seed)
 	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
+	toolutil.AddTemplateVarFlag(cmd, &templateVars)
+	toolutil.AddFileRootFlag(cmd, &fileRoot)
 
 	return cmd
 }
