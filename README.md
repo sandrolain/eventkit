@@ -1,5 +1,7 @@
 # EventKit
 
+![EventKit](./eventkit.png)
+
 [![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/sandrolain/eventkit)](https://goreportcard.com/report/github.com/sandrolain/eventkit)
@@ -9,8 +11,10 @@ EventKit is a comprehensive collection of command-line tools designed for testin
 ## Features
 
 ✅ **Multi-Protocol Support** - Works with 10 different protocols and event brokers  
-✅ **Payload Interpolation** - Dynamic payload generation with variables like `{nowtime}`, `{uuid}`, `{json}`  
-✅ **MIME Type Support** - Handles text/plain, application/json, and application/cbor  
+✅ **Advanced Template System** - Dynamic payload generation with 15+ placeholders, custom variables, file includes, and wrappers  
+✅ **MIME Type Support** - Handles text/plain, application/json, and application/cbor with auto-detection  
+✅ **Deterministic Testing** - Reproducible test data with configurable seed  
+✅ **Secure File Handling** - Optional file includes with sandboxing and caching  
 ✅ **Graceful Shutdown** - Proper signal handling (SIGINT/SIGTERM) for clean exits  
 ✅ **Periodic Messaging** - Send messages at configurable intervals  
 ✅ **Performance Testing** - Built-in timing and throughput measurement  
@@ -47,7 +51,7 @@ Test CoAP (Constrained Application Protocol) servers - ideal for IoT and constra
 
 ```bash
 # Send POST requests periodically
-coaptool send --server coap://localhost:5683 --path /sensors --payload '{"temp": {rand}}' --interval 5s
+coaptool send --server coap://localhost:5683 --path /sensors --payload '{"temp": {{rand}}}' --interval 5s
 
 # Receive CoAP requests
 coaptool receive --address :5683 --path /sensors
@@ -64,7 +68,7 @@ Test MQTT brokers with publish/subscribe messaging.
 
 ```bash
 # Publish messages to topic
-mqtttool send --server tcp://localhost:1883 --topic sensors/temperature --payload '{"value": {rand}}' --interval 5s
+mqtttool send --server tcp://localhost:1883 --topic sensors/temperature --payload '{"value": {{rand}}}' --interval 5s
 
 # Subscribe to topic
 mqtttool receive --server tcp://localhost:1883 --topic sensors/#
@@ -82,7 +86,7 @@ Test NATS messaging systems with subject-based routing.
 
 ```bash
 # Publish to subject
-natstool send --server nats://localhost:4222 --topic events.user.created --payload '{"id": "{uuid}"}' --interval 5s
+natstool send --server nats://localhost:4222 --topic events.user.created --payload '{"id": "{{uuid}}"}' --interval 5s
 
 # Subscribe to subject pattern
 natstool receive --server nats://localhost:4222 --topic events.user.*
@@ -99,7 +103,7 @@ Test Apache Kafka with producer/consumer operations.
 
 ```bash
 # Produce messages
-kafkatool send --server localhost:9092 --topic user-events --payload '{"action": "login", "time": "{nowtime}"}' --interval 10s
+kafkatool send --server localhost:9092 --topic user-events --payload '{"action": "login", "time": "{{nowtime}}"}' --interval 10s
 
 # Consume messages from topic
 kafkatool receive --server localhost:9092 --topic user-events --group my-consumer-group
@@ -118,7 +122,7 @@ Test HTTP endpoints with POST requests or run simple HTTP servers.
 
 ```bash
 # Send POST requests
-httptool send --dest http://localhost:8080/api/events --payload '{"type": "test", "ts": "{nowtime}"}' --interval 5s
+httptool send --dest http://localhost:8080/api/events --payload '{"type": "test", "ts": "{{nowtime}}"}' --interval 5s
 
 # Start HTTP server to receive requests
 httptool receive --address :8080 --path /api/events
@@ -137,7 +141,7 @@ Test Redis Pub/Sub messaging.
 
 ```bash
 # Publish to channel
-redistool send --server localhost:6379 --topic notifications --payload '{"msg": "Hello", "time": "{nowtime}"}' --interval 5s
+redistool send --server localhost:6379 --topic notifications --payload '{"msg": "Hello", "time": "{{nowtime}}"}' --interval 5s
 
 # Subscribe to channel
 redistool receive --server localhost:6379 --topic notifications
@@ -155,7 +159,7 @@ Test Google Cloud Pub/Sub messaging.
 
 ```bash
 # Publish messages
-pubsubtool send --project my-gcp-project --topic events-topic --payload '{"event": "click", "user": "{uuid}"}' --interval 5s
+pubsubtool send --project my-gcp-project --topic events-topic --payload '{"event": "click", "user": "{{uuid}}"}' --interval 5s
 
 # Subscribe to messages
 pubsubtool receive --project my-gcp-project --subscription events-sub
@@ -191,7 +195,7 @@ Test MongoDB with document insertion and Change Streams monitoring.
 ```bash
 # Insert documents periodically
 mongotool send --server mongodb://localhost:27017 --database testdb --collection events \
-  --payload '{"type": "sensor", "value": {rand}, "timestamp": "{nowtime}"}' --interval 5s
+  --payload '{"type": "sensor", "value": {{rand}}, "timestamp": "{{nowtime}}"}' --interval 5s
 
 # Watch Change Streams for real-time updates
 mongotool serve --server mongodb://localhost:27017 --database testdb --collection events
@@ -217,7 +221,7 @@ gittool send \
   --remote https://github.com/user/test-repo.git \
   --branch main \
   --filename data.log \
-  --payload "Automated update at {nowtime}" \
+  --payload "Automated update at {{nowtime}}" \
   --message "Auto-commit from eventkit" \
   --interval 30s
 ```
@@ -232,24 +236,104 @@ gittool send \
 
 ## Payload Interpolation
 
-All tools support dynamic payload generation with interpolation variables:
+All tools support dynamic payload generation with a powerful template system.
 
-| Variable | Description | Example Output |
-|----------|-------------|----------------|
-| `{json}` | Random JSON object | `{"key1":"val","key2":123}` |
-| `{cbor}` | Random CBOR data | Binary CBOR-encoded data |
-| `{nowtime}` | Current timestamp (RFC3339) | `2024-01-15T14:30:00Z` |
-| `{nowunix}` | Unix timestamp | `1705329000` |
-| `{rand}` | Random integer | `42857291` |
-| `{uuid}` | UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
+### Standard Placeholders
 
-**Example Usage:**
+Default delimiters are `{{` and `}}`.
+
+| Placeholder | Description | Example Output |
+|-------------|-------------|----------------|
+| `{{json}}` | Random JSON object | `{"key1":"val","key2":123}` |
+| `{{cbor}}` | Random CBOR data | Binary CBOR-encoded data |
+| `{{nowtime}}` | Current timestamp (RFC3339) | `2024-01-15T14:30:00Z` |
+| `{{datetime}}` | Alias for `{{nowtime}}` | `2024-01-15T14:30:00Z` |
+| `{{rand}}` | Random integer | `42857291` |
+| `{{uuid}}` | UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
+| `{{counter}}` | Incrementing counter (process-local) | `1`, `2`, `3`, ... |
+| `{{sentence}}` | Random sentence | `The quick brown fox jumps` |
+| `{{sentiment}}` | Random sentiment text | `positive`, `negative`, `neutral` |
+
+### Template Variables
+
+Inject custom values with `--template-var`:
+
+```bash
+mqtttool send --server tcp://localhost:1883 --topic alerts \
+  --template-var env=production \
+  --template-var region=us-east \
+  --payload '{"env": "{{var:env}}", "region": "{{var:region}}", "ts": "{{nowtime}}"}'
+```
+
+### File Includes
+
+Include file contents with `{{file:path}}` (requires `--allow-file-reads`):
+
+```bash
+# Include file content (disabled by default for security)
+httptool send --dest http://localhost:8080/upload \
+  --allow-file-reads \
+  --file-root /safe/data \
+  --payload '{{file:config.json}}'
+
+# Enable caching for repeated file reads
+httptool send --dest http://localhost:8080/upload \
+  --allow-file-reads \
+  --cache-files \
+  --payload '{{file:template.json}}' \
+  --interval 1s
+```
+
+**Security Notes:**
+
+- File reads are **disabled by default**
+- Use `--allow-file-reads` to enable
+- Use `--file-root` to restrict access to a specific directory subtree
+- Use `--cache-files` to cache file content (process-lifetime cache)
+
+### Wrappers
+
+Control how placeholders are inserted:
+
+| Wrapper | Description | Example |
+|---------|-------------|----------|
+| `{{raw:placeholder}}` | Insert raw bytes | `{{raw:json}}` → `{"a":1}` |
+| `{{str:placeholder}}` | Insert JSON-quoted string | `{{str:json}}` → `"{\"a\":1}"` |
+
+```bash
+# Insert JSON as quoted string
+mqtttool send --server tcp://localhost:1883 --topic data \
+  --payload '{"metadata": {{str:json}}, "raw_data": {{raw:cbor}}}'
+```
+
+### Custom Delimiters
+
+Change placeholder delimiters with `--template-open` and `--template-close`:
+
+```bash
+mqtttool send --server tcp://localhost:1883 --topic data \
+  --template-open '<%' --template-close '%>' \
+  --payload '{"time": "<%nowtime%>", "id": "<%uuid%>"}'
+```
+
+### Deterministic Testing
+
+Use `--seed` for reproducible random data:
+
+```bash
+# Same seed produces same random values
+mqtttool send --server tcp://localhost:1883 --topic test \
+  --seed 12345 \
+  --payload '{"id": "{{uuid}}", "value": {{rand}}}'
+```
+
+### Basic Example
 
 ```bash
 mqtttool send \
   --server tcp://localhost:1883 \
   --topic sensors/data \
-  --payload '{"id": "{uuid}", "timestamp": "{nowtime}", "value": {rand}}' \
+  --payload '{"id": "{{uuid}}", "timestamp": "{{nowtime}}", "value": {{rand}}}' \
   --mime application/json \
   --interval 5s
 ```
@@ -258,10 +342,24 @@ mqtttool send \
 
 All send commands support these options:
 
+### Message Options
+
 - `--interval` - Time between messages (e.g., `10s`, `1m`, `5m30s`, `1h`)
-- `--payload` - Message content (supports interpolation variables)
-- `--mime` - MIME type (`text/plain`, `application/json`, `application/cbor`)
+- `--payload` - Message content (supports template interpolation)
+- `--mime` - MIME type (`text/plain`, `application/json`, `application/cbor`); auto-detected if empty
 - `--size` - Payload size for auto-generated content (in bytes)
+
+### Template Options
+
+- `--template-open` - Opening delimiter for placeholders (default: `{{`)
+- `--template-close` - Closing delimiter for placeholders (default: `}}`)
+- `--template-var key=value` - Define custom template variable (repeatable)
+- `--seed N` - Deterministic seed for random data generation
+- `--allow-file-reads` - Enable `{{file:path}}` placeholders (disabled by default)
+- `--file-root path` - Restrict file reads to directory subtree
+- `--cache-files` - Enable caching for `{{file:path}}` includes
+
+### Connection Aliases
 
 Flag aliases for server/destination (all tools accept both):
 
@@ -270,39 +368,39 @@ Flag aliases for server/destination (all tools accept both):
 
 ## Use Cases
 
-**IoT Testing**
+### IoT Testing
 
 ```bash
 # Simulate temperature sensor
 coaptool send --server coap://iot.example.com:5683 --path /sensors/temp \
-  --payload '{"device": "sensor-01", "temp": {rand}, "time": "{nowtime}"}' --interval 30s
+  --payload '{"device": "sensor-01", "temp": {{rand}}, "time": "{{nowtime}}"}' --interval 30s
 ```
 
-**Microservices Events**
+### Microservices Events
 
 ```bash
 # Publish user events to Kafka
 kafkatool send --server kafka.local:9092 --topic user.events \
-  --payload '{"user_id": "{uuid}", "action": "login", "ts": "{nowunix}"}' --interval 2s
+  --payload '{"user_id": "{{uuid}}", "action": "login", "ts": {{counter}}}' --interval 2s
 ```
 
-**CI/CD Pipeline Testing**
+### CI/CD Pipeline Testing
 
 ```bash
 # Trigger Git commits for testing webhooks
 gittool send --remote https://github.com/org/test.git --branch develop \
-  --filename ci-test.txt --payload "Test run {uuid}" --interval 1m
+  --filename ci-test.txt --payload "Test run {{uuid}}" --interval 1m
 ```
 
-**Database Async Notifications**
+### Database Async Notifications
 
 ```bash
 # PostgreSQL event notification
 pgsqltool send --conn "postgres://app:secret@db:5432/events" \
-  --channel cache-invalidate --payload '{"table": "users", "id": {rand}}'
+  --channel cache-invalidate --payload '{"table": "users", "id": {{rand}}}'
 ```
 
-**Real-Time Data Monitoring**
+### Real-Time Data Monitoring
 
 ```bash
 # Monitor MongoDB Change Streams
@@ -310,7 +408,35 @@ mongotool serve --server mongodb://localhost:27017 --database myapp --collection
 
 # Generate test data
 mongotool send --server mongodb://localhost:27017 --database myapp --collection logs \
-  --payload '{"level": "info", "msg": "Test event {uuid}", "time": "{nowtime}"}' --interval 3s
+  --payload '{"level": "info", "msg": "Test event {{uuid}}", "time": "{{nowtime}}"}' --interval 3s
+```
+
+### Advanced Template Usage
+
+```bash
+# Deterministic testing with seeded random data
+kafkatool send --server localhost:9092 --topic test-events \
+  --seed 42 \
+  --payload '{"id": "{{uuid}}", "value": {{rand}}}' \
+  --interval 1s
+
+# Using template variables for environment-specific data
+httptool send --dest http://api.example.com/events \
+  --template-var env=staging \
+  --template-var version=1.2.3 \
+  --payload '{"env": "{{var:env}}", "version": "{{var:version}}", "ts": "{{nowtime}}"}'
+
+# File includes with sandboxing and caching
+mqtttool send --server tcp://localhost:1883 --topic config-updates \
+  --allow-file-reads \
+  --file-root /app/configs \
+  --cache-files \
+  --payload '{{file:service-config.json}}' \
+  --interval 10s
+
+# Using wrappers to embed JSON in strings
+natstool send --server nats://localhost:4222 --topic events.data \
+  --payload '{"metadata": {{str:json}}, "counter": {{counter}}}'
 ```
 
 ## Development
@@ -335,7 +461,7 @@ golangci-lint run ./...
 
 ### Project Structure
 
-```
+```text
 eventkit/
 ├── pkg/
 │   ├── common/         # Shared utilities (signal handling, CLI helpers)
