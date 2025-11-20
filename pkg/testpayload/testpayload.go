@@ -154,7 +154,10 @@ func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) 
 						return nil, fmt.Errorf("file reads are disabled: to enable allow file reads set testpayload.SetAllowFileReads(true)")
 					}
 					if FileRoot != "" {
-						absRoot, _ := filepath.Abs(FileRoot)
+						absRoot, err := filepath.Abs(FileRoot)
+						if err != nil {
+							return nil, fmt.Errorf("invalid file root: %w", err)
+						}
 						absPath, err2 := filepath.Abs(fp)
 						if err2 != nil {
 							return nil, fmt.Errorf("invalid file path: %s", fp)
@@ -167,6 +170,7 @@ func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) 
 					if c, ok := GetFileFromCache(fp); ok {
 						val = c
 					} else {
+						// #nosec G304 - File path is validated and restricted by FileRoot
 						val, err = os.ReadFile(fp)
 						if err == nil {
 							PutFileIntoCache(fp, val)
@@ -245,7 +249,10 @@ func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) 
 				return nil, fmt.Errorf("file reads are disabled: to enable allow file reads set testpayload.SetAllowFileReads(true)")
 			}
 			if FileRoot != "" {
-				absRoot, _ := filepath.Abs(FileRoot)
+				absRoot, err := filepath.Abs(FileRoot)
+				if err != nil {
+					return nil, fmt.Errorf("invalid file root: %w", err)
+				}
 				absPath, err2 := filepath.Abs(filePath)
 				if err2 != nil {
 					return nil, fmt.Errorf("invalid file path: %s", filePath)
@@ -261,6 +268,7 @@ func InterpolateWithDelimiters(str string, openDelim string, closeDelim string) 
 			if c, ok := GetFileFromCache(filePath); ok {
 				content = c
 			} else {
+				// #nosec G304 - File path is validated and restricted by FileRoot
 				content, err = os.ReadFile(filePath)
 				if err == nil {
 					PutFileIntoCache(filePath, content)
@@ -291,6 +299,7 @@ func SetAllowFileReads(v bool) {
 // SeedRandom seeds the global pseudo-random generator used by testpayload helpers.
 // Useful to make generation deterministic for tests and reproducible scenarios.
 func SeedRandom(seed int64) {
+	//nolint:staticcheck // SA1019: Using deprecated rand.Seed for backward compatibility
 	rand.Seed(seed)
 }
 

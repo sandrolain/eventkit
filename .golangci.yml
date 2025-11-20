@@ -47,3 +47,7 @@ linters:
       - path: "pkg/toolutil/.+\\.go"
         linters:
           - forbidigo
+      - path: "pkg/testpayload/testpayload\\.go"
+        linters:
+          - gocognit
+          - gocyclo

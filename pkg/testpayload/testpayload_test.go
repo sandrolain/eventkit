@@ -361,10 +361,10 @@ func TestInterpolateWithDelimiters_FileRootSandboxing(t *testing.T) {
 	// Create files
 	fileInside := filepath.Join(tmpRoot, "inside.txt")
 	fileOutside := filepath.Join(tmpOutside, "outside.txt")
-	if err := os.WriteFile(fileInside, []byte("inside"), 0644); err != nil {
+	if err := os.WriteFile(fileInside, []byte("inside"), 0600); err != nil {
 		t.Fatalf("failed to write inside file: %v", err)
 	}
-	if err := os.WriteFile(fileOutside, []byte("outside"), 0644); err != nil {
+	if err := os.WriteFile(fileOutside, []byte("outside"), 0600); err != nil {
 		t.Fatalf("failed to write outside file: %v", err)
 	}
 
@@ -394,7 +394,7 @@ func TestInterpolateWithDelimiters_FileCache(t *testing.T) {
 	// Create temp file
 	tmpDir := t.TempDir()
 	f := filepath.Join(tmpDir, "cachefile.txt")
-	if err := os.WriteFile(f, []byte("first"), 0644); err != nil {
+	if err := os.WriteFile(f, []byte("first"), 0600); err != nil {
 		t.Fatalf("failed to write initial file: %v", err)
 	}
 
@@ -414,7 +414,7 @@ func TestInterpolateWithDelimiters_FileCache(t *testing.T) {
 	}
 
 	// Modify file to second; cache should still return first
-	if err := os.WriteFile(f, []byte("second"), 0644); err != nil {
+	if err := os.WriteFile(f, []byte("second"), 0600); err != nil {
 		t.Fatalf("failed to update file: %v", err)
 	}
 	res2, err := InterpolateWithDelimiters("{{file:"+f+"}}", "{{", "}}")
@@ -437,7 +437,7 @@ func TestInterpolateWithDelimiters_FileCache(t *testing.T) {
 
 	// Turn off caching; update file again and it should be visible immediately
 	SetFileCacheEnabled(false)
-	if err := os.WriteFile(f, []byte("third"), 0644); err != nil {
+	if err := os.WriteFile(f, []byte("third"), 0600); err != nil {
 		t.Fatalf("failed to update file: %v", err)
 	}
 	res4, err := InterpolateWithDelimiters("{{file:"+f+"}}", "{{", "}}")
