@@ -1,7 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"log/slog"
+	"mime"
+	"mime/multipart"
+	"strings"
 
 	"github.com/sandrolain/eventkit/pkg/common"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
@@ -36,8 +41,22 @@ func serveCommand() *cobra.Command {
 					{Title: "Remote", Items: []toolutil.KV{{Key: "Addr", Value: ctx.RemoteAddr().String()}}},
 					{Title: "Headers", Items: headerItems},
 				}
+
 				ct := string(ctx.Request.Header.ContentType())
-				toolutil.PrintColoredMessage("HTTP", sections, ctx.Request.Body(), ct)
+				body := ctx.Request.Body()
+
+				// Check if this is a multipart request
+				if isMultipartRequest(ct) {
+					multipartSections, multipartBody := parseMultipartRequest(ct, body)
+					if multipartSections != nil {
+						sections = append(sections, multipartSections...)
+						toolutil.PrintColoredMessage("HTTP", sections, []byte(multipartBody), "text/plain")
+						return
+					}
+				}
+
+				// Standard request handling
+				toolutil.PrintColoredMessage("HTTP", sections, body, ct)
 			}
 
 			// Start server in goroutine
@@ -62,4 +81,83 @@ func serveCommand() *cobra.Command {
 
 	cmd.Flags().StringVar(&serveAddr, "address", "0.0.0.0:9090", "HTTP listen address")
 	return cmd
+}
+
+// isMultipartRequest checks if the Content-Type indicates a multipart request.
+func isMultipartRequest(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(mediaType, "multipart/")
+}
+
+// parseMultipartRequest parses a multipart request and returns sections with file info and form fields.
+// Returns nil if parsing fails.
+func parseMultipartRequest(contentType string, body []byte) ([]toolutil.MessageSection, string) {
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, ""
+	}
+
+	boundary, ok := params["boundary"]
+	if !ok {
+		return nil, ""
+	}
+
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	var formFields []toolutil.KV
+	var files []toolutil.KV
+	var bodyParts []string
+
+	for {
+		part, err := reader.NextPart()
+		if err != nil {
+			break
+		}
+
+		formName := part.FormName()
+		fileName := part.FileName()
+
+		// Read part content
+		buf := new(bytes.Buffer)
+		size, err := buf.ReadFrom(part)
+		if err != nil {
+			// Log error but continue processing other parts
+			continue
+		}
+
+		if fileName != "" {
+			// This is a file upload
+			files = append(files, toolutil.KV{
+				Key:   formName,
+				Value: fmt.Sprintf("%s (%d bytes)", fileName, size),
+			})
+			bodyParts = append(bodyParts, fmt.Sprintf("[File: %s = %s (%d bytes)]", formName, fileName, size))
+		} else {
+			// This is a form field
+			value := buf.String()
+			formFields = append(formFields, toolutil.KV{
+				Key:   formName,
+				Value: value,
+			})
+			bodyParts = append(bodyParts, fmt.Sprintf("%s = %s", formName, value))
+		}
+	}
+
+	sections := []toolutil.MessageSection{}
+	if len(formFields) > 0 {
+		sections = append(sections, toolutil.MessageSection{
+			Title: "Form Fields",
+			Items: formFields,
+		})
+	}
+	if len(files) > 0 {
+		sections = append(sections, toolutil.MessageSection{
+			Title: "Files",
+			Items: files,
+		})
+	}
+
+	return sections, strings.Join(bodyParts, "\n")
 }

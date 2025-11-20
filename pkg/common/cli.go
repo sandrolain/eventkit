@@ -51,3 +51,13 @@ func StartPeriodicTask(ctx context.Context, interval string, task func() error) 
 func RunOnce(task func() error) error {
 	return task()
 }
+
+// RunOnceOrPeriodic executes the task either once or periodically based on the once flag.
+// If once is true, runs the task immediately and returns.
+// If once is false, runs the task periodically at the specified interval.
+func RunOnceOrPeriodic(ctx context.Context, once bool, interval string, task func() error) error {
+	if once {
+		return RunOnce(task)
+	}
+	return StartPeriodicTask(ctx, interval, task)
+}

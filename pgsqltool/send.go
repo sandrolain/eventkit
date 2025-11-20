@@ -24,6 +24,7 @@ func sendCommand() *cobra.Command {
 		templateVars   []string
 		fileRoot       string
 		cacheFiles     bool
+		once           bool
 	)
 
 	cmd := &cobra.Command{
@@ -58,7 +59,7 @@ func sendCommand() *cobra.Command {
 
 			logger.Info("Sending NOTIFY to PostgreSQL", "channel", channel, "interval", interval)
 
-			return common.StartPeriodicTask(ctx, interval, func() error {
+			return common.RunOnceOrPeriodic(ctx, once, interval, func() error {
 				b, _, err := toolutil.BuildPayload(payload, mime)
 				if err != nil {
 					logger.Error("Failed to build payload", "error", err)
@@ -83,6 +84,7 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&channel, "channel", "test_channel", "NOTIFY channel name")
 	toolutil.AddPayloadFlags(cmd, &payload, "{nowtime}", &mime, toolutil.CTText)
 	toolutil.AddIntervalFlag(cmd, &interval, "5s")
+	toolutil.AddOnceFlag(cmd, &once)
 	toolutil.AddSeedFlag(cmd, &seed)
 	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 	toolutil.AddTemplateVarFlag(cmd, &templateVars)

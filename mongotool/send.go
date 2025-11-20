@@ -27,6 +27,7 @@ func sendCommand() *cobra.Command {
 		templateVars   []string
 		fileRoot       string
 		cacheFiles     bool
+		once           bool
 	)
 
 	cmd := &cobra.Command{
@@ -102,7 +103,7 @@ func sendCommand() *cobra.Command {
 				return nil
 			}
 
-			return common.StartPeriodicTask(ctx, interval, insert)
+			return common.RunOnceOrPeriodic(ctx, once, interval, insert)
 		},
 	}
 
@@ -111,6 +112,7 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&collection, "collection", "events", "Collection name")
 	toolutil.AddPayloadFlags(cmd, &payload, `{"message":"{sentence}","timestamp":"{nowtime}"}`, &mime, toolutil.CTJSON)
 	toolutil.AddIntervalFlag(cmd, &interval, "5s")
+	toolutil.AddOnceFlag(cmd, &once)
 	toolutil.AddSeedFlag(cmd, &seed)
 	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 	toolutil.AddTemplateVarFlag(cmd, &templateVars)

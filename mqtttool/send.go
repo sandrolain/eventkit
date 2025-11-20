@@ -36,6 +36,7 @@ func sendCommand() *cobra.Command {
 		templateVars   []string
 		fileRoot       string
 		cacheFiles     bool
+		once           bool
 	)
 
 	cmd := &cobra.Command{
@@ -99,7 +100,7 @@ func sendCommand() *cobra.Command {
 				return nil
 			}
 
-			return common.StartPeriodicTask(ctx, sendInterval, publish)
+			return common.RunOnceOrPeriodic(ctx, once, sendInterval, publish)
 		},
 	}
 
@@ -108,8 +109,9 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().IntVar(&sendQoS, "qos", 0, "MQTT QoS level (0,1,2)")
 	cmd.Flags().BoolVar(&sendRetain, "retain", false, "Retain messages")
 	cmd.Flags().StringVar(&sendClientID, "clientid", "", "Client ID (auto if empty)")
-	toolutil.AddPayloadFlags(cmd, &sendPayload, "{nowtime}", &sendMIME, toolutil.CTText)
+	toolutil.AddPayloadFlags(cmd, &sendPayload, "{}", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
+	toolutil.AddOnceFlag(cmd, &once)
 	toolutil.AddHeadersFlag(cmd, &headers)
 	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
 	toolutil.AddSeedFlag(cmd, &seed)

@@ -118,14 +118,21 @@ kafkatool receive --server localhost:9092 --topic user-events --group my-consume
 
 ### 🌐 HTTP Tool
 
-Test HTTP endpoints with POST requests or run simple HTTP servers.
+Test HTTP endpoints with POST requests or run simple HTTP servers. Supports multipart file uploads and intelligent multipart request parsing in serve mode.
 
 ```bash
 # Send POST requests
 httptool send --dest http://localhost:8080/api/events --payload '{"type": "test", "ts": "{{nowtime}}"}' --interval 5s
 
-# Start HTTP server to receive requests
-httptool receive --address :8080 --path /api/events
+# Upload files using multipart/form-data
+httptool send --dest http://localhost:8080/upload \
+  --file document=/path/to/file.pdf \
+  --file image=/path/to/photo.jpg \
+  --form-field username=testuser \
+  --form-field description="Test upload"
+
+# Start HTTP server to receive requests (automatically parses multipart uploads)
+httptool serve --address :8080 --path /api/events
 ```
 
 **Key Options:**
@@ -134,6 +141,15 @@ httptool receive --address :8080 --path /api/events
 - `--address` - Listen address (for receive)
 - `--path` - HTTP path
 - `--method` - HTTP method (default: POST)
+- `--file` / `-f` - File to upload in multipart format: `name=path` (repeatable)
+- `--form-field` - Form field in multipart format: `name=value` (repeatable)
+
+**Serve Mode Features:**
+
+- Automatically detects and parses `multipart/form-data` requests
+- Displays form fields with their values
+- Shows uploaded files with name and size (not binary content)
+- Falls back to standard body display for non-multipart requests
 
 ### 🔴 Redis Tool
 
@@ -345,6 +361,7 @@ All send commands support these options:
 ### Message Options
 
 - `--interval` - Time between messages (e.g., `10s`, `1m`, `5m30s`, `1h`)
+- `--once` - Execute once and exit (ignores `--interval`)
 - `--payload` - Message content (supports template interpolation)
 - `--mime` - MIME type (`text/plain`, `application/json`, `application/cbor`); auto-detected if empty
 - `--size` - Payload size for auto-generated content (in bytes)
@@ -398,6 +415,25 @@ gittool send --remote https://github.com/org/test.git --branch develop \
 # PostgreSQL event notification
 pgsqltool send --conn "postgres://app:secret@db:5432/events" \
   --channel cache-invalidate --payload '{"table": "users", "id": {{rand}}}'
+```
+
+### Single Execution Mode
+
+```bash
+# Send a single message and exit
+mqtttool send --server tcp://localhost:1883 --topic alerts/critical \
+  --payload '{"alert": "System restarted", "time": "{{nowtime}}"}' \
+  --once
+
+# Publish one event to Kafka
+kafkatool send --server localhost:9092 --topic system.events \
+  --payload '{"event": "deployment", "version": "1.2.3"}' \
+  --once
+
+# Send single HTTP request
+httptool send --address http://api.example.com/webhook \
+  --payload '{"status": "completed"}' \
+  --once
 ```
 
 ### Real-Time Data Monitoring

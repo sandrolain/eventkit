@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sandrolain/eventkit/pkg/common"
 	"github.com/sandrolain/eventkit/pkg/testpayload"
 	"github.com/segmentio/kafka-go"
 	"github.com/spf13/cobra"
@@ -29,16 +30,15 @@ func sendCommand() *cobra.Command {
 		templateVars   []string
 		fileRoot       string
 		cacheFiles     bool
+		once           bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "send",
 		Short: "Produce periodic Kafka messages",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dur, err := time.ParseDuration(sendInterval)
-			if err != nil {
-				return fmt.Errorf("invalid interval: %w", err)
-			}
+			ctx, cancel := common.SetupGracefulShutdown()
+			defer cancel()
 
 			w := kafka.NewWriter(kafka.WriterConfig{
 				Brokers: strings.Split(sendBrokers, ","),
@@ -49,9 +49,6 @@ func sendCommand() *cobra.Command {
 					slog.Error("Failed to close Kafka writer", "error", err)
 				}
 			}()
-
-			ticker := time.NewTicker(dur)
-			defer ticker.Stop()
 
 			if seed != 0 {
 				testpayload.SeedRandom(seed)
@@ -72,11 +69,11 @@ func sendCommand() *cobra.Command {
 			logger := toolutil.Logger()
 			logger.Info("Producing to Kafka", "brokers", sendBrokers, "topic", sendTopic, "interval", sendInterval)
 
-			for range ticker.C {
+			produce := func() error {
 				body, _, err := toolutil.BuildPayloadWithDelimiters(sendPayload, sendMIME, openDelim, closeDelim)
 				if err != nil {
 					logger.Error("Failed to build payload", "error", err)
-					continue
+					return err
 				}
 				msg := kafka.Message{Value: body}
 				for k, v := range headerMap {
@@ -84,15 +81,17 @@ func sendCommand() *cobra.Command {
 				}
 
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
 				err = w.WriteMessages(ctx, msg)
-				cancel()
 				if err != nil {
 					logger.Error("Failed to send message", "error", err)
-				} else {
-					logger.Info("Message sent", "bytes", len(body))
+					return err
 				}
+				logger.Info("Message sent", "bytes", len(body))
+				return nil
 			}
-			return nil
+
+			return common.RunOnceOrPeriodic(ctx, once, sendInterval, produce)
 		},
 	}
 
@@ -100,6 +99,7 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&sendTopic, "topic", "test", "Kafka topic")
 	toolutil.AddPayloadFlags(cmd, &sendPayload, "Hello, Kafka!", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
+	toolutil.AddOnceFlag(cmd, &once)
 	toolutil.AddHeadersFlag(cmd, &headers)
 	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)
 	toolutil.AddSeedFlag(cmd, &seed)

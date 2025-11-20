@@ -30,6 +30,7 @@ func sendCommand() *cobra.Command {
 		seed           int64
 		allowFileReads bool
 		cacheFiles     bool
+		once           bool
 	)
 
 	cmd := &cobra.Command{
@@ -132,7 +133,7 @@ func sendCommand() *cobra.Command {
 				}
 			}
 
-			return common.StartPeriodicTask(ctx, sendInterval, func() error {
+			return common.RunOnceOrPeriodic(ctx, once, sendInterval, func() error {
 				sendOnce()
 				return nil
 			})
@@ -143,6 +144,7 @@ func sendCommand() *cobra.Command {
 	toolutil.AddPathFlag(cmd, &sendPath, "/event", "CoAP resource path")
 	toolutil.AddPayloadFlags(cmd, &sendPayload, "{}", &sendMIME, toolutil.CTJSON)
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
+	toolutil.AddOnceFlag(cmd, &once)
 	cmd.Flags().StringVar(&sendProto, "proto", "udp", "CoAP transport protocol: udp or tcp")
 	toolutil.AddHeadersFlag(cmd, &headers)
 	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)

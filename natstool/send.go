@@ -26,6 +26,7 @@ func sendCommand() *cobra.Command {
 		templateVars   []string
 		fileRoot       string
 		cacheFiles     bool
+		once           bool
 	)
 
 	cmd := &cobra.Command{
@@ -103,7 +104,7 @@ func sendCommand() *cobra.Command {
 				return nil
 			}
 
-			return common.StartPeriodicTask(ctx, sendInterval, publish)
+			return common.RunOnceOrPeriodic(ctx, once, sendInterval, publish)
 		},
 	}
 
@@ -111,6 +112,7 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&sendSubject, "subject", "test.subject", "NATS subject")
 	toolutil.AddPayloadFlags(cmd, &sendPayload, "{nowtime}", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
+	toolutil.AddOnceFlag(cmd, &once)
 	cmd.Flags().StringVar(&sendStream, "stream", "", "JetStream stream name (if set, uses JetStream)")
 	toolutil.AddHeadersFlag(cmd, &headers)
 	toolutil.AddTemplateDelimiterFlags(cmd, &openDelim, &closeDelim)

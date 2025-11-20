@@ -1,12 +1,11 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/sandrolain/eventkit/pkg/common"
 	"github.com/sandrolain/eventkit/pkg/testpayload"
 	toolutil "github.com/sandrolain/eventkit/pkg/toolutil"
 	"github.com/spf13/cobra"
@@ -26,26 +25,22 @@ func sendCommand() *cobra.Command {
 		cacheFiles     bool
 		sendInterval   string
 		sendDataKey    string
+		once           bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "send",
 		Short: "Publish periodic messages to a Redis channel or stream",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.Background()
+			ctx, cancel := common.SetupGracefulShutdown()
+			defer cancel()
+
 			rdb := redis.NewClient(&redis.Options{Addr: sendAddr})
 			defer func() {
 				if err := rdb.Close(); err != nil {
 					slog.Error("Failed to close Redis client", "error", err)
 				}
 			}()
-
-			dur, err := time.ParseDuration(sendInterval)
-			if err != nil {
-				return fmt.Errorf("invalid interval: %w", err)
-			}
-			ticker := time.NewTicker(dur)
-			defer ticker.Stop()
 
 			mode := "channel"
 			if sendStream != "" {
@@ -66,11 +61,11 @@ func sendCommand() *cobra.Command {
 			testpayload.SetTemplateVars(varsMap)
 			logger.Info("Sending to Redis", "address", sendAddr, "mode", mode, "interval", sendInterval)
 
-			for range ticker.C {
+			return common.RunOnceOrPeriodic(ctx, once, sendInterval, func() error {
 				body, _, err := toolutil.BuildPayload(sendPayload, sendMIME)
 				if err != nil {
 					logger.Error("Failed to build payload", "error", err)
-					continue
+					return err
 				}
 				switch mode {
 				case "stream":
@@ -78,18 +73,18 @@ func sendCommand() *cobra.Command {
 					res := rdb.XAdd(ctx, &redis.XAddArgs{Stream: sendStream, Values: fields})
 					if err := res.Err(); err != nil {
 						logger.Error("XAdd error", "error", err)
-					} else {
-						logger.Info("Message sent to stream", "stream", sendStream, "id", res.Val())
+						return err
 					}
+					logger.Info("Message sent to stream", "stream", sendStream, "id", res.Val())
 				default: // channel
 					if err := rdb.Publish(ctx, sendChannel, body).Err(); err != nil {
 						logger.Error("Publish error", "error", err)
-					} else {
-						logger.Info("Message sent to channel", "channel", sendChannel, "bytes", len(body))
+						return err
 					}
+					logger.Info("Message sent to channel", "channel", sendChannel, "bytes", len(body))
 				}
-			}
-			return nil
+				return nil
+			})
 		},
 	}
 
@@ -99,6 +94,7 @@ func sendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&sendDataKey, "dataKey", "data", "Field name holding data in stream messages")
 	toolutil.AddPayloadFlags(cmd, &sendPayload, "Hello, Redis!", &sendMIME, toolutil.CTText)
 	toolutil.AddIntervalFlag(cmd, &sendInterval, "5s")
+	toolutil.AddOnceFlag(cmd, &once)
 	toolutil.AddSeedFlag(cmd, &seed)
 	toolutil.AddAllowFileReadsFlag(cmd, &allowFileReads)
 	toolutil.AddFileCacheFlag(cmd, &cacheFiles)

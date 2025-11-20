@@ -344,6 +344,11 @@ func AddIntervalFlag(cmd *cobra.Command, interval *string, def string) {
 	cmd.Flags().StringVar(interval, "interval", def, "Interval between actions, e.g. 2s, 500ms, 1m")
 }
 
+// AddOnceFlag adds a flag to execute the action once and exit.
+func AddOnceFlag(cmd *cobra.Command, once *bool) {
+	cmd.Flags().BoolVar(once, "once", false, "Execute once and exit (ignores --interval)")
+}
+
 // AddServerFlag adds a standardized server/broker/connection flag.
 // Supports aliases for backward compatibility (e.g., --address, --broker).
 func AddServerFlag(cmd *cobra.Command, server *string, def string, aliases ...string) {

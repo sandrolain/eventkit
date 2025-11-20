@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -120,6 +121,74 @@ func TestRunOnce(t *testing.T) {
 		err := RunOnce(task)
 		if err != expectedErr {
 			t.Errorf("RunOnce() error = %v, want %v", err, expectedErr)
+		}
+	})
+}
+
+func TestRunOnceOrPeriodic(t *testing.T) {
+	t.Run("once mode", func(t *testing.T) {
+		callCount := 0
+		task := func() error {
+			callCount++
+			return nil
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+
+		err := RunOnceOrPeriodic(ctx, true, "10ms", task)
+		if err != nil {
+			t.Fatalf("RunOnceOrPeriodic() error = %v", err)
+		}
+
+		if callCount != 1 {
+			t.Errorf("RunOnceOrPeriodic(once=true) called task %d times, want 1", callCount)
+		}
+	})
+
+	t.Run("periodic mode", func(t *testing.T) {
+		callCount := 0
+		task := func() error {
+			callCount++
+			return nil
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		defer cancel()
+
+		err := RunOnceOrPeriodic(ctx, false, "50ms", task)
+		if err != nil {
+			t.Fatalf("RunOnceOrPeriodic() error = %v", err)
+		}
+
+		// Should be called at least 2 times in 150ms with 50ms interval
+		if callCount < 2 {
+			t.Errorf("RunOnceOrPeriodic(once=false) called task %d times, want at least 2", callCount)
+		}
+	})
+
+	t.Run("once mode with task error", func(t *testing.T) {
+		expectedErr := errors.New("task failed")
+		task := func() error {
+			return expectedErr
+		}
+
+		ctx := context.Background()
+		err := RunOnceOrPeriodic(ctx, true, "10ms", task)
+		if err != expectedErr {
+			t.Errorf("RunOnceOrPeriodic(once=true) error = %v, want %v", err, expectedErr)
+		}
+	})
+
+	t.Run("periodic mode with invalid interval", func(t *testing.T) {
+		task := func() error {
+			return nil
+		}
+
+		ctx := context.Background()
+		err := RunOnceOrPeriodic(ctx, false, "invalid", task)
+		if err == nil {
+			t.Error("RunOnceOrPeriodic() expected error for invalid interval")
 		}
 	})
 }

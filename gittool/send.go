@@ -34,6 +34,7 @@ func sendCommand() *cobra.Command {
 		templateVars   []string
 		fileRoot       string
 		cacheFiles     bool
+		once           bool
 	)
 
 	cmd := &cobra.Command{
@@ -58,13 +59,14 @@ func sendCommand() *cobra.Command {
 				return fmt.Errorf("invalid template-var: %w", errVars)
 			}
 			testpayload.SetTemplateVars(varsMap)
-			return runGitSend(remote, branch, interval, filename, payload, mime, commitMessage, username, password)
+			return runGitSend(remote, branch, interval, filename, payload, mime, commitMessage, username, password, once)
 		},
 	}
 
 	cmd.Flags().StringVar(&remote, "remote", "", "Remote git repository URL (required)")
 	cmd.Flags().StringVar(&branch, "branch", "main", "Branch to commit to")
 	cmd.Flags().StringVar(&interval, "interval", "10s", "Interval between commits (e.g. 10s, 1m)")
+	toolutil.AddOnceFlag(cmd, &once)
 	cmd.Flags().StringVar(&filename, "filename", "data.txt", "File to update in the repo")
 	toolutil.AddPayloadFlags(cmd, &payload, "Automated update at {nowtime}", &mime, toolutil.CTText)
 	cmd.Flags().StringVar(&commitMessage, "message", "Automated commit", "Commit message")
@@ -79,7 +81,7 @@ func sendCommand() *cobra.Command {
 	return cmd
 }
 
-func runGitSend(remote, branch, interval, filename, payload, mime, message, username, password string) error {
+func runGitSend(remote, branch, interval, filename, payload, mime, message, username, password string, once bool) error {
 	ctx, cancel := common.SetupGracefulShutdown()
 	defer cancel()
 
@@ -101,7 +103,7 @@ func runGitSend(remote, branch, interval, filename, payload, mime, message, user
 	logger := toolutil.Logger()
 	logger.Info("Git tool ready", "remote", remote, "branch", branch, "file", filename, "interval", interval)
 
-	return common.StartPeriodicTask(ctx, interval, func() error {
+	return common.RunOnceOrPeriodic(ctx, once, interval, func() error {
 		if err := doCommit(repo, tmpDir, branch, filename, payload, mime, message, username, password, remote); err != nil {
 			logger.Error("Commit error", "error", err)
 			return err
