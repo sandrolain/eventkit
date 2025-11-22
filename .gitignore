@@ -35,3 +35,5 @@ docker-compose.override.yml
 
 # Task runner
 .task/
+licenses.csv
+trivy-results.json
